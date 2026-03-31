@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RDSec AI Endpoint Explorer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d27;
+    --surface2: #22263a;
+    --border:   #2e3450;
+    --accent:   #4f8ef7;
+    --accent2:  #38bdf8;
+    --text:     #e2e8f0;
+    --muted:    #8892a4;
+    --success:  #34d399;
+    --error:    #f87171;
+    --radius:   8px;
+    --mono:     'Courier New', 'Consolas', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 { font-size: 18px; font-weight: 700; }
+  header .sub { color: var(--muted); font-size: 12px; margin-left: 8px; }
+
+  /* ── Main ── */
+  main { max-width: 1100px; margin: 0 auto; padding: 22px 20px 48px; }
+  section { margin-bottom: 28px; }
+  h2 {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  /* ── Row 1: API Key ── */
+  .key-row { display: flex; gap: 8px; }
+  #apiKey {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 14px;
+    height: 120px;
+    resize: none;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #apiKey:focus { border-color: var(--accent); }
+  #apiKey::placeholder { color: var(--muted); }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    padding: 0 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #statusMsg {
+    margin-top: 8px;
+    font-size: 12px;
+    min-height: 16px;
+  }
+  #statusMsg.error { color: var(--error); }
+  #statusMsg.ok    { color: var(--success); }
+  #statusMsg.info  { color: var(--accent2); }
+
+  /* ── Row 3: Example Code ── */
+  .selector-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .selector-row { display: flex; gap: 6px; }
+
+  .sel-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 14px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .sel-btn:hover { color: var(--text); border-color: var(--accent); }
+  .sel-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+  .code-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    position: relative;
+  }
+  .code-box pre {
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.65;
+    color: var(--text);
+    white-space: pre;
+    overflow-x: auto;
+    padding: 14px 16px;
+    margin: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .code-box pre::-webkit-scrollbar { height: 4px; }
+  .code-box pre::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .copy-snippet-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 5px;
+    padding: 3px 11px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .copy-snippet-btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .copy-snippet-btn.copied { background: var(--success); border-color: var(--success); color: #0f1117; }
+
+  /* ── Model grid (full listing) ── */
+  #modelSection h2 .count { font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 11px; }
+  #modelPlaceholder {
+    text-align: center;
+    color: var(--muted);
+    padding: 32px 0;
+    font-size: 13px;
+  }
+
+  .vendor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 12px;
+  }
+
+  .vendor-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .vendor-card-header {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 600;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .vendor-icon {
+    width: 18px; height: 18px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .count-badge {
+    margin-left: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0 6px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  /* scrollable body with max height */
+  .vendor-card-body {
+    overflow-y: auto;
+    max-height: 200px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .vendor-card-body::-webkit-scrollbar { width: 4px; }
+  .vendor-card-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .model-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 12px;
+    gap: 6px;
+    transition: background 0.1s;
+    cursor: pointer;
+  }
+  .model-row:hover { background: var(--surface2); }
+  .model-row.selected-row { background: rgba(79,142,247,0.12); }
+  .model-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .copy-model-btn {
+    flex-shrink: 0;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 3px;
+    padding: 1px 7px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.12s;
+    white-space: nowrap;
+  }
+  .copy-model-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .copy-model-btn.copied { border-color: var(--success); color: var(--success); }
+
+  /* ── Spinner ── */
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    vertical-align: middle;
+    margin-right: 5px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .btn-try {
+    background: #16a34a;
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    padding: 7px 22px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn-try:hover { opacity: 0.85; }
+  .btn-try:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #responseOutput {
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.65;
+    color: var(--text);
+    white-space: pre;
+    overflow-x: auto;
+    padding: 14px 16px;
+    margin: 0;
+    min-height: 60px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  #responseOutput::-webkit-scrollbar { height: 4px; }
+  #responseOutput::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  #responseOutput.resp-error { color: var(--error); }
+  #responseOutput.resp-ok    { color: var(--text); }
+
+  @media (max-width: 600px) {
+    main { padding: 14px 10px 32px; }
+    header { padding: 12px 14px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+    <rect width="26" height="26" rx="5" fill="#d70000"/>
+    <text x="4" y="20" font-size="15" font-family="sans-serif" font-weight="900" fill="#fff">T</text>
+  </svg>
+  <h1>RDSec AI Endpoint Explorer</h1>
+  <span class="sub">api.rdsec.trendmicro.com</span>
+</header>
+
+<main>
+
+  <!-- ── Row 1: API Key ── -->
+  <section>
+    <h2>API Key</h2>
+    <div class="key-row">
+      <textarea id="apiKey" placeholder="Paste your Bearer API key here…" spellcheck="false" autocomplete="off" rows="1"></textarea>
+      <button class="btn-primary" id="fetchBtn" onclick="fetchModels()">Fetch Models</button>
+    </div>
+    <div id="statusMsg"></div>
+  </section>
+
+  <!-- ── Row 2: Models by Vendor ── -->
+  <section id="modelSection">
+    <h2>Models by Vendor <span id="modelCountLabel" class="count"></span></h2>
+    <div id="modelPlaceholder">Enter your API key above and click <strong>Fetch Models</strong> to load models.</div>
+    <div class="vendor-grid" id="vendorGrid" style="display:none;"></div>
+  </section>
+
+  <!-- ── Row 3: Example Code ── -->
+  <section>
+    <h2>Example Request</h2>
+    <div class="selector-rows">
+      <div class="selector-row" id="usageRow">
+        <button class="sel-btn active" data-usage="chat"  onclick="selectUsage('chat',  this)">Chat Completion</button>
+        <button class="sel-btn"        data-usage="embed" onclick="selectUsage('embed', this)">Embedding</button>
+        <button class="sel-btn"        data-usage="audio" onclick="selectUsage('audio', this)">Audio Speech</button>
+        <button class="sel-btn"        data-usage="image" onclick="selectUsage('image', this)">Image</button>
+      </div>
+      <div class="selector-row" id="langRow">
+        <button class="sel-btn active" data-lang="curl"  onclick="selectLang('curl',  this)">curl</button>
+        <button class="sel-btn"        data-lang="ps"    onclick="selectLang('ps',    this)">PowerShell</button>
+        <button class="sel-btn"        data-lang="py"    onclick="selectLang('py',    this)">Python</button>
+      </div>
+    </div>
+    <div class="code-box">
+      <button class="copy-snippet-btn" id="copySnippetBtn" onclick="copySnippet()">Copy</button>
+      <pre id="codeSnippet"></pre>
+    </div>
+    <div style="margin-top:10px;">
+      <button class="btn-try" id="tryBtn" onclick="tryIt()">&#9654; Try it!</button>
+    </div>
+  </section>
+
+  <!-- ── Row 4: Response ── -->
+  <section id="responseSection" style="display:none;">
+    <h2>Response <span id="responseMetaLabel" class="count"></span></h2>
+    <div class="code-box">
+      <button class="copy-snippet-btn" id="copyResponseBtn" onclick="copyResponse()">Copy</button>
+      <pre id="responseOutput"></pre>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────
+const BASE_URL = 'https://api.rdsec.trendmicro.com/prod/aiendpoint/v1';
+
+// ── Vendor rules (order matters — most specific first) ────────────────────
+const VENDOR_RULES = [
+  // TrendMicro internal models
+  { label: 'TrendMicro', color: '#ef4444', bg: '#1a0a0a', letter: 'T',
+    test: id => /^(rone-|primus-|cybertron-)/i.test(id) },
+  // OpenAI
+  { label: 'OpenAI', color: '#10a37f', bg: '#0a1a14', letter: 'O',
+    test: id => /^(gpt-|o1$|o1-|o3-|o4-|o5-|text-embedding|text-davinci|text-babbage|text-curie|text-ada|tts-|whisper-|dall-e)/i.test(id) },
+  // Anthropic
+  { label: 'Anthropic', color: '#d97706', bg: '#1a1208', letter: 'A',
+    test: id => /^claude-/i.test(id) },
+  // Google (Gemini, Gemma)
+  { label: 'Google', color: '#4285f4', bg: '#0a1220', letter: 'G',
+    test: id => /^(gemini-|gemma-|palm-|bison|gecko)/i.test(id) },
+  // Meta (Llama)
+  { label: 'Meta', color: '#0668e1', bg: '#080f1a', letter: 'M',
+    test: id => /^(llama\d|llama-\d|llama3|llama4|codellama)/i.test(id) },
+  // DeepSeek
+  { label: 'DeepSeek', color: '#7c3aed', bg: '#10091a', letter: 'D',
+    test: id => /^deepseek-/i.test(id) },
+  // Mistral
+  { label: 'Mistral', color: '#ff7000', bg: '#1a0f00', letter: 'Mi',
+    test: id => /^(mistral-|mixtral-|codestral)/i.test(id) },
+  // Qwen / Alibaba
+  { label: 'Qwen', color: '#6366f1', bg: '#0d0d1a', letter: 'Q',
+    test: id => /^(qwen\d|smollm)/i.test(id) },
+  // NVIDIA
+  { label: 'NVIDIA', color: '#76b900', bg: '#0d1500', letter: 'N',
+    test: id => /^nvidia-/i.test(id) },
+  // Amazon (Nova)
+  { label: 'Amazon', color: '#ff9900', bg: '#1a1300', letter: 'Amz',
+    test: id => /^nova-/i.test(id) },
+  // xAI (Grok)
+  { label: 'xAI', color: '#e2e8f0', bg: '#181818', letter: 'X',
+    test: id => /^grok-/i.test(id) },
+  // Stability AI
+  { label: 'Stability AI', color: '#a855f7', bg: '#120a1a', letter: 'S',
+    test: id => /^(stable-diffusion|stable-image)/i.test(id) },
+];
+const VENDOR_OTHER = { label: 'Other', color: '#6b7280', bg: '#111318', letter: '?' };
+
+function detectVendor(id) {
+  for (const r of VENDOR_RULES) if (r.test(id)) return r;
+  return VENDOR_OTHER;
+}
+
+// ── State ─────────────────────────────────────────────────────────────────
+let selectedModel = '';
+let selectedUsage = 'chat';
+let selectedLang  = 'curl';
+let allModels     = [];   // array of id strings
+
+// ── Snippet builders ───────────────────────────────────────────────────────
+function getKey()   { return document.getElementById('apiKey').value.trim() || '{{ your-api-key }}'; }
+function getModel() { return selectedModel || '{{ model-id }}'; }
+
+const SNIPPETS = {
+  chat: {
+    curl: (k, m) =>
+`curl --location '${BASE_URL}/chat/completions' \\
+  --header 'Content-Type: application/json' \\
+  --header 'Authorization: Bearer ${k}' \\
+  --data '{
+    "model": "${m}",
+    "max_tokens": 1000,
+    "temperature": 0.8,
+    "top_p": 1,
+    "presence_penalty": 1,
+    "messages": [
+        {
+            "role": "user",
+            "content": "What is the capital of France?"
+        }
+    ],
+    "stream": false
+}'`,
+    ps: (k, m) =>
+`$headers = @{
+    "Content-Type"  = "application/json"
+    "Authorization" = "Bearer ${k}"
+}
+
+$body = @'
+{
+    "model": "${m}",
+    "max_tokens": 1000,
+    "temperature": 0.8,
+    "top_p": 1,
+    "presence_penalty": 1,
+    "messages": [
+        { "role": "user", "content": "What is the capital of France?" }
+    ],
+    "stream": false
+}
+'@
+
+$response = Invoke-RestMethod '${BASE_URL}/chat/completions' -Method POST -Headers $headers -Body $body
+$response | ConvertTo-Json`,
+    py: (k, m) =>
+`import openai
+
+openai.base_url = "${BASE_URL}/"
+openai.api_key  = "${k}"  # Do NOT hardcode secrets in production
+
+response = openai.chat.completions.create(
+    model="${m}",
+    max_tokens=1000,
+    messages=[{"role": "user", "content": "What is the capital of France?"}],
+)
+
+print(response.choices[0].message.content)`,
+  },
+
+  embed: {
+    curl: (k, m) =>
+`curl --location '${BASE_URL}/embeddings' \\
+  --header 'Content-Type: application/json' \\
+  --header 'Authorization: Bearer ${k}' \\
+  --data '{
+    "model": "${m}",
+    "input": ["Hello, world!"]
+}'`,
+    ps: (k, m) =>
+`$headers = @{
+    "Content-Type"  = "application/json"
+    "Authorization" = "Bearer ${k}"
+}
+
+$body = '{"model":"${m}","input":["Hello, world!"]}'
+
+$response = Invoke-RestMethod '${BASE_URL}/embeddings' -Method POST -Headers $headers -Body $body
+$response | ConvertTo-Json`,
+    py: (k, m) =>
+`import openai
+
+openai.base_url = "${BASE_URL}/"
+openai.api_key  = "${k}"
+
+response = openai.embeddings.create(
+    model="${m}",
+    input=["Hello, world!"],
+)
+
+print(response.data[0].embedding[:5])  # first 5 dimensions`,
+  },
+
+  audio: {
+    curl: (k, m) =>
+`curl --location '${BASE_URL}/audio/speech' \\
+  --header 'Content-Type: application/json' \\
+  --header 'Authorization: Bearer ${k}' \\
+  --data '{
+    "model": "${m}",
+    "input": "Hello world, this is a text-to-speech test.",
+    "voice": "alloy"
+}' \\
+  --output speech.mp3`,
+    ps: (k, m) =>
+`$headers = @{
+    "Content-Type"  = "application/json"
+    "Authorization" = "Bearer ${k}"
+}
+
+$body = '{"model":"${m}","input":"Hello world, this is a TTS test.","voice":"alloy"}'
+
+Invoke-RestMethod '${BASE_URL}/audio/speech' -Method POST -Headers $headers -Body $body -OutFile speech.mp3`,
+    py: (k, m) =>
+`import openai
+from pathlib import Path
+
+openai.base_url = "${BASE_URL}/"
+openai.api_key  = "${k}"
+
+response = openai.audio.speech.create(
+    model="${m}",
+    voice="alloy",
+    input="Hello world, this is a text-to-speech test.",
+)
+
+Path("speech.mp3").write_bytes(response.content)
+print("Saved speech.mp3")`,
+  },
+
+  image: {
+    curl: (k, m) =>
+`curl --location '${BASE_URL}/images/generations' \\
+  --header 'Content-Type: application/json' \\
+  --header 'Authorization: Bearer ${k}' \\
+  --data '{
+    "model": "${m}",
+    "prompt": "A sunset over misty mountains",
+    "n": 1,
+    "size": "1024x1024"
+}'`,
+    ps: (k, m) =>
+`$headers = @{
+    "Content-Type"  = "application/json"
+    "Authorization" = "Bearer ${k}"
+}
+
+$body = '{"model":"${m}","prompt":"A sunset over misty mountains","n":1,"size":"1024x1024"}'
+
+$response = Invoke-RestMethod '${BASE_URL}/images/generations' -Method POST -Headers $headers -Body $body
+$response | ConvertTo-Json`,
+    py: (k, m) =>
+`import openai
+
+openai.base_url = "${BASE_URL}/"
+openai.api_key  = "${k}"
+
+response = openai.images.generate(
+    model="${m}",
+    prompt="A sunset over misty mountains",
+    n=1,
+    size="1024x1024",
+)
+
+print(response.data[0].url)`,
+  },
+};
+
+function renderSnippet() {
+  const fn = SNIPPETS[selectedUsage]?.[selectedLang];
+  document.getElementById('codeSnippet').textContent = fn ? fn(getKey(), getModel()) : '';
+}
+
+// ── Usage / Lang selectors ─────────────────────────────────────────────────
+function selectUsage(id, btn) {
+  selectedUsage = id;
+  document.querySelectorAll('#usageRow .sel-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderSnippet();
+}
+function selectLang(id, btn) {
+  selectedLang = id;
+  document.querySelectorAll('#langRow .sel-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderSnippet();
+}
+
+// ── Copy helpers ───────────────────────────────────────────────────────────
+function flashCopied(btn, origText) {
+  btn.textContent = 'Copied!';
+  btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = origText; btn.classList.remove('copied'); }, 1500);
+}
+function copySnippet() {
+  const text = document.getElementById('codeSnippet').textContent;
+  const btn  = document.getElementById('copySnippetBtn');
+  navigator.clipboard.writeText(text).then(() => flashCopied(btn, 'Copy'));
+}
+function copyModel(id, btn) {
+  navigator.clipboard.writeText(id).then(() => flashCopied(btn, 'Copy'));
+}
+
+// ── Status ─────────────────────────────────────────────────────────────────
+function setStatus(msg, type) {
+  const el = document.getElementById('statusMsg');
+  if (typeof msg === 'string') { el.textContent = msg; }
+  else { el.innerHTML = ''; el.appendChild(msg); }
+  el.className = type || '';
+}
+
+// ── Fetch models ───────────────────────────────────────────────────────────
+async function fetchModels() {
+  const key = document.getElementById('apiKey').value.trim();
+  if (!key) { setStatus('Please paste your API key first.', 'error'); return; }
+
+  const btn = document.getElementById('fetchBtn');
+  btn.disabled = true;
+  const spin = document.createElement('span');
+  spin.className = 'spinner';
+  const msgNode = document.createDocumentFragment();
+  msgNode.appendChild(spin);
+  msgNode.appendChild(document.createTextNode(' Fetching model list…'));
+  setStatus(msgNode, 'info');
+
+  try {
+    const res = await fetch(`${BASE_URL}/models`, {
+      headers: { 'Authorization': `Bearer ${key}` }
+    });
+    if (res.status === 401 || res.status === 403) {
+      setStatus('Authentication failed (401/403). Check your API key.', 'error'); return;
+    }
+    if (!res.ok) { setStatus(`Server returned ${res.status} ${res.statusText}.`, 'error'); return; }
+
+    const data   = await res.json();
+    const models = Array.isArray(data) ? data : Array.isArray(data.data) ? data.data : [];
+    if (!models.length) { setStatus('No models returned.', 'error'); return; }
+
+    allModels = models.map(m => m.id || m.name || String(m)).filter(Boolean).sort();
+    renderAll();
+    setStatus(`Loaded ${allModels.length} model${allModels.length !== 1 ? 's' : ''}.`, 'ok');
+  } catch (err) {
+    if (err instanceof TypeError) {
+      setStatus('Network/CORS error — use the curl snippet in a terminal instead.', 'error');
+    } else {
+      setStatus(`Error: ${err.message}`, 'error');
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Render everything after models load ───────────────────────────────────
+function renderAll() {
+  const groups = groupByVendor(allModels);
+  renderVendorCards(groups);
+  document.getElementById('modelCountLabel').textContent = `— ${allModels.length} total`;
+  document.getElementById('modelPlaceholder').style.display = 'none';
+  document.getElementById('vendorGrid').style.display = 'grid';
+}
+
+function groupByVendor(ids) {
+  const map = new Map();
+  const order = [...VENDOR_RULES.map(r => r.label), VENDOR_OTHER.label];
+  for (const id of ids) {
+    const v = detectVendor(id);
+    if (!map.has(v.label)) map.set(v.label, { vendor: v, ids: [] });
+    map.get(v.label).ids.push(id);
+  }
+  return [...map.values()].sort((a, b) => order.indexOf(a.vendor.label) - order.indexOf(b.vendor.label));
+}
+
+// ── Vendor cards ───────────────────────────────────────────────────────────
+function renderVendorCards(groups) {
+  const grid = document.getElementById('vendorGrid');
+  grid.innerHTML = '';
+
+  for (const { vendor, ids } of groups) {
+    const card = document.createElement('div');
+    card.className = 'vendor-card';
+
+    const header = document.createElement('div');
+    header.className = 'vendor-card-header';
+    header.innerHTML = `
+      <span class="vendor-icon" style="background:${vendor.bg};color:${vendor.color};border:1px solid ${vendor.color}44">${vendor.letter}</span>
+      ${escHtml(vendor.label)}
+      <span class="count-badge">${ids.length}</span>`;
+    card.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'vendor-card-body';
+
+    for (const id of ids) {
+      const row = document.createElement('div');
+      row.className = 'model-row';
+      row.dataset.modelId = id;
+      row.title = id;
+
+      const name = document.createElement('span');
+      name.className = 'model-name';
+      name.textContent = id;
+
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'copy-model-btn';
+      copyBtn.textContent = 'Copy';
+      copyBtn.onclick = e => { e.stopPropagation(); copyModel(id, copyBtn); };
+
+      row.onclick = () => {
+        document.querySelectorAll('.model-row').forEach(r => r.classList.remove('selected-row'));
+        row.classList.add('selected-row');
+        selectedModel = id;
+        renderSnippet();
+        copyModel(id, copyBtn);
+      };
+
+      row.appendChild(name);
+      row.appendChild(copyBtn);
+      body.appendChild(row);
+    }
+    card.appendChild(body);
+    grid.appendChild(card);
+  }
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Try it! ────────────────────────────────────────────────────────────────
+async function tryIt() {
+  const key = document.getElementById('apiKey').value.trim();
+  if (!key) { showResponse('Please paste your API key first.', true); return; }
+
+  const model = selectedModel || 'gpt-4o';
+  const btn   = document.getElementById('tryBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Sending…';
+
+  const section = document.getElementById('responseSection');
+  const out     = document.getElementById('responseOutput');
+  section.style.display = '';
+  out.className = '';
+  out.textContent = 'Waiting for response…';
+  document.getElementById('responseMetaLabel').textContent = '';
+  out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` };
+  const t0 = Date.now();
+
+  try {
+    let endpoint, body;
+
+    if (selectedUsage === 'chat') {
+      endpoint = `${BASE_URL}/chat/completions`;
+      body = { model, max_tokens: 256, messages: [{ role: 'user', content: 'What is the capital of France? Reply in one sentence.' }], stream: false };
+    } else if (selectedUsage === 'embed') {
+      endpoint = `${BASE_URL}/embeddings`;
+      body = { model, input: ['Hello, world!'] };
+    } else if (selectedUsage === 'audio') {
+      endpoint = `${BASE_URL}/audio/speech`;
+      body = { model, input: 'Hello world, this is a text-to-speech test.', voice: 'alloy' };
+    } else if (selectedUsage === 'image') {
+      endpoint = `${BASE_URL}/images/generations`;
+      body = { model, prompt: 'A sunset over misty mountains', n: 1, size: '1024x1024' };
+    }
+
+    const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+
+    // Audio returns binary — handle separately
+    if (selectedUsage === 'audio') {
+      if (!res.ok) {
+        const txt = await res.text();
+        showResponse(`HTTP ${res.status} ${res.statusText}\n\n${txt}`, true);
+      } else {
+        const blob  = await res.blob();
+        const url   = URL.createObjectURL(blob);
+        const aEl   = document.createElement('a');
+        aEl.href    = url;
+        aEl.download = 'speech.mp3';
+        aEl.click();
+        showResponse(`✓ Audio received (${(blob.size / 1024).toFixed(1)} KB). Download started automatically.`, false);
+        document.getElementById('responseMetaLabel').textContent = `— ${elapsed}s`;
+      }
+    } else {
+      const data = await res.json();
+      const pretty = JSON.stringify(data, null, 2);
+      showResponse(pretty, !res.ok);
+      document.getElementById('responseMetaLabel').textContent = `— HTTP ${res.status} · ${elapsed}s`;
+    }
+  } catch (err) {
+    showResponse(`Network error: ${err.message}`, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Try it!';
+  }
+}
+
+function showResponse(text, isError) {
+  const section = document.getElementById('responseSection');
+  const out     = document.getElementById('responseOutput');
+  section.style.display = '';
+  out.textContent = text;
+  out.className   = isError ? 'resp-error' : 'resp-ok';
+  out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function copyResponse() {
+  const text = document.getElementById('responseOutput').textContent;
+  const btn  = document.getElementById('copyResponseBtn');
+  navigator.clipboard.writeText(text).then(() => flashCopied(btn, 'Copy'));
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+document.getElementById('apiKey').addEventListener('input', renderSnippet);
+document.getElementById('apiKey').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); fetchModels(); }
+});
+
+renderSnippet();
+</script>
+
+<!--
+=== GitHub Pages Deployment ===
+
+1. Create a repo named:  <your-username>.github.io
+2. Push ONLY index.html (do NOT push models.json or response.json):
+     git init
+     git add index.html
+     git commit -m "Add RDSec AI Endpoint Explorer"
+     git remote add origin https://github.com/<username>/<username>.github.io.git
+     git push -u origin main
+3. Settings → Pages → Source: Deploy from branch → main / (root)
+4. Live at: https://<username>.github.io
+-->
+
+</body>
+</html>
