@@ -297,6 +297,68 @@
   #responseOutput.resp-error { color: var(--error); }
   #responseOutput.resp-ok    { color: var(--text); }
 
+  /* ── Row 2.5: User Message ── */
+  #userMessage {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 14px;
+    height: 72px;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #userMessage:focus { border-color: var(--accent); }
+  #userMessage::placeholder { color: var(--muted); }
+
+  /* ── Row 4: Dual response display ── */
+  .response-text-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-height: 60px;
+  }
+  .response-text-box.resp-error { color: var(--error); }
+
+  .response-toggle-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    margin-bottom: 6px;
+  }
+  .response-toggle-bar span {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .btn-toggle-json {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--muted);
+    font-size: 11px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .btn-toggle-json:hover { color: var(--text); border-color: var(--accent); }
+  .btn-toggle-json.open  { color: var(--accent); border-color: var(--accent); }
+  #rawJsonWrap { display: none; margin-top: 6px; }
+  #rawJsonWrap.open { display: block; }
+
   @media (max-width: 600px) {
     main { padding: 14px 10px 32px; }
     header { padding: 12px 14px; }
@@ -333,6 +395,15 @@
     <div class="vendor-grid" id="vendorGrid" style="display:none;"></div>
   </section>
 
+  <!-- ── Row 2.5: User Message ── -->
+  <section id="userMsgSection">
+    <h2>User Message</h2>
+    <textarea id="userMessage"
+              placeholder="What is the capital of France?"
+              spellcheck="false"
+              autocomplete="off"></textarea>
+  </section>
+
   <!-- ── Row 3: Example Code ── -->
   <section>
     <h2>Example Request</h2>
@@ -361,9 +432,22 @@
   <!-- ── Row 4: Response ── -->
   <section id="responseSection" style="display:none;">
     <h2>Response <span id="responseMetaLabel" class="count"></span></h2>
-    <div class="code-box">
-      <button class="copy-snippet-btn" id="copyResponseBtn" onclick="copyResponse()">Copy</button>
-      <pre id="responseOutput"></pre>
+
+    <!-- Primary: clean text answer -->
+    <div class="response-text-box" id="responseText"></div>
+
+    <!-- Toggle bar for full JSON -->
+    <div class="response-toggle-bar">
+      <span>Full JSON</span>
+      <button class="btn-toggle-json" id="toggleJsonBtn" onclick="toggleJson()">&#9776; Show</button>
+    </div>
+
+    <!-- Collapsible raw JSON -->
+    <div id="rawJsonWrap">
+      <div class="code-box">
+        <button class="copy-snippet-btn" id="copyResponseBtn" onclick="copyResponse()">Copy</button>
+        <pre id="responseOutput"></pre>
+      </div>
     </div>
   </section>
 
@@ -428,6 +512,11 @@ let allModels     = [];   // array of id strings
 // ── Snippet builders ───────────────────────────────────────────────────────
 function getKey()   { return document.getElementById('apiKey').value.trim() || '{{ your-api-key }}'; }
 function getModel() { return selectedModel || '{{ model-id }}'; }
+function getUserMsg() {
+  const el = document.getElementById('userMessage');
+  return el ? el.value.trim() || el.placeholder : 'What is the capital of France?';
+}
+function jsonStr(s) { return JSON.stringify(s).slice(1, -1); }
 
 const SNIPPETS = {
   chat: {
@@ -444,7 +533,7 @@ const SNIPPETS = {
     "messages": [
         {
             "role": "user",
-            "content": "What is the capital of France?"
+            "content": "${jsonStr(getUserMsg())}"
         }
     ],
     "stream": false
@@ -463,7 +552,7 @@ $body = @'
     "top_p": 1,
     "presence_penalty": 1,
     "messages": [
-        { "role": "user", "content": "What is the capital of France?" }
+        { "role": "user", "content": "${jsonStr(getUserMsg())}" }
     ],
     "stream": false
 }
@@ -480,7 +569,7 @@ openai.api_key  = "${k}"  # Do NOT hardcode secrets in production
 response = openai.chat.completions.create(
     model="${m}",
     max_tokens=1000,
-    messages=[{"role": "user", "content": "What is the capital of France?"}],
+    messages=[{"role": "user", "content": ${JSON.stringify(getUserMsg())}}],
 )
 
 print(response.choices[0].message.content)`,
@@ -763,13 +852,8 @@ async function tryIt() {
   btn.disabled = true;
   btn.textContent = '⏳ Sending…';
 
-  const section = document.getElementById('responseSection');
-  const out     = document.getElementById('responseOutput');
-  section.style.display = '';
-  out.className = '';
-  out.textContent = 'Waiting for response…';
+  showResponse('Waiting for response…', false, 'Waiting for response…');
   document.getElementById('responseMetaLabel').textContent = '';
-  out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` };
   const t0 = Date.now();
@@ -779,7 +863,9 @@ async function tryIt() {
 
     if (selectedUsage === 'chat') {
       endpoint = `${BASE_URL}/chat/completions`;
-      body = { model, max_tokens: 256, messages: [{ role: 'user', content: 'What is the capital of France? Reply in one sentence.' }], stream: false };
+      const userMsg = document.getElementById('userMessage').value.trim()
+                   || document.getElementById('userMessage').placeholder;
+      body = { model, max_tokens: 256, messages: [{ role: 'user', content: userMsg }], stream: false };
     } else if (selectedUsage === 'embed') {
       endpoint = `${BASE_URL}/embeddings`;
       body = { model, input: ['Hello, world!'] };
@@ -806,13 +892,26 @@ async function tryIt() {
         aEl.href    = url;
         aEl.download = 'speech.mp3';
         aEl.click();
-        showResponse(`✓ Audio received (${(blob.size / 1024).toFixed(1)} KB). Download started automatically.`, false);
+        const audioMsg = `✓ Audio received (${(blob.size / 1024).toFixed(1)} KB). Download started automatically.`;
+        showResponse(audioMsg, false, audioMsg);
         document.getElementById('responseMetaLabel').textContent = `— ${elapsed}s`;
       }
     } else {
       const data = await res.json();
       const pretty = JSON.stringify(data, null, 2);
-      showResponse(pretty, !res.ok);
+      let primaryText;
+      if (!res.ok) {
+        primaryText = undefined; // show raw error text in primary box
+      } else if (selectedUsage === 'chat' && data?.choices?.[0]?.message?.content !== undefined) {
+        primaryText = data.choices[0].message.content;
+      } else if (selectedUsage === 'embed') {
+        primaryText = `Embedding received (${data?.data?.[0]?.embedding?.length ?? '?'} dimensions). See full JSON for values.`;
+      } else if (selectedUsage === 'image') {
+        primaryText = data?.data?.[0]?.url
+          ? `Image URL:\n${data.data[0].url}`
+          : 'Image generated. See full JSON for the URL.';
+      }
+      showResponse(pretty, !res.ok, primaryText);
       document.getElementById('responseMetaLabel').textContent = `— HTTP ${res.status} · ${elapsed}s`;
     }
   } catch (err) {
@@ -823,13 +922,37 @@ async function tryIt() {
   }
 }
 
-function showResponse(text, isError) {
-  const section = document.getElementById('responseSection');
-  const out     = document.getElementById('responseOutput');
+function showResponse(text, isError, primaryText) {
+  const section   = document.getElementById('responseSection');
+  const out       = document.getElementById('responseOutput');
+  const textBox   = document.getElementById('responseText');
+  const rawWrap   = document.getElementById('rawJsonWrap');
+  const toggleBtn = document.getElementById('toggleJsonBtn');
+
   section.style.display = '';
+
+  // Primary text display
+  textBox.textContent = primaryText !== undefined ? primaryText : text;
+  textBox.className   = 'response-text-box' + (isError ? ' resp-error' : '');
+
+  // Raw JSON section
   out.textContent = text;
   out.className   = isError ? 'resp-error' : 'resp-ok';
-  out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  // Reset toggle to collapsed on each new response
+  rawWrap.classList.remove('open');
+  toggleBtn.classList.remove('open');
+  toggleBtn.textContent = '\u2630 Show';
+
+  section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function toggleJson() {
+  const wrap = document.getElementById('rawJsonWrap');
+  const btn  = document.getElementById('toggleJsonBtn');
+  const isOpen = wrap.classList.toggle('open');
+  btn.classList.toggle('open', isOpen);
+  btn.textContent = isOpen ? '\u2630 Hide' : '\u2630 Show';
 }
 
 function copyResponse() {
@@ -843,6 +966,7 @@ document.getElementById('apiKey').addEventListener('input', renderSnippet);
 document.getElementById('apiKey').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); fetchModels(); }
 });
+document.getElementById('userMessage').addEventListener('input', renderSnippet);
 
 renderSnippet();
 </script>
