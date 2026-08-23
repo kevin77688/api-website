@@ -1,195 +1,547 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>RDSec AI Endpoint Explorer</title>
-<link rel="stylesheet" href="styles.css" />
-<script defer src="app.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Endpoint Explorer</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <script defer src="app.js"></script>
 </head>
 <body>
 
-<header>
-  <div class="brand-mark">T</div>
-  <div class="title-wrap">
-    <h1>RDSec AI Endpoint Explorer</h1>
-    <span class="sub">api.rdsec.trendmicro.com</span>
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand-group">
+        <div class="brand-badge">
+          <svg class="brand-icon" viewBox="0 0 64 64" fill="none">
+            <path d="M32 8 L52 19 L52 45 L32 56 L12 45 L12 19 Z" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+            <path d="M32 8 L32 32 L52 45" stroke="rgba(255,255,255,0.45)" stroke-width="3"/>
+            <path d="M32 32 L12 45" stroke="rgba(255,255,255,0.45)" stroke-width="3"/>
+            <path d="M32 32 L52 19" stroke="rgba(255,255,255,0.45)" stroke-width="3"/>
+            <path d="M32 32 L12 19" stroke="rgba(255,255,255,0.45)" stroke-width="3"/>
+            <circle cx="32" cy="32" r="6" fill="#38bdf8" />
+          </svg>
+        </div>
+        <div class="brand-text">
+          <div class="brand-title-row">
+            <span class="brand-name">AI Endpoint</span>
+            <span class="brand-highlight">Explorer</span>
+            <span class="gateway-tag">v1 Gateway</span>
+          </div>
+          <span class="brand-sub">Universal API Testing &amp; Playground</span>
+        </div>
+      </div>
+
+      <!-- Quick Nav Links -->
+      <nav class="quick-nav">
+        <a href="#row-auth" class="nav-item">Config</a>
+        <a href="#row-chat" class="nav-item nav-pill-chat" id="navLinkChat"><span class="nav-dot"></span>Text</a>
+        <a href="#row-image" class="nav-item nav-pill-image" id="navLinkImage"><span class="nav-dot"></span>Image</a>
+        <a href="#row-audio" class="nav-item nav-pill-audio" id="navLinkAudio"><span class="nav-dot"></span>Voice</a>
+        <a href="#row-embed" class="nav-item nav-pill-embed" id="navLinkEmbed"><span class="nav-dot"></span>Embedding</a>
+        <a href="#row-workbench" class="nav-item nav-pill-test"><span class="nav-dot"></span>Test Console</a>
+      </nav>
+
+      <div class="header-meta">
+        <div class="meta-pill" id="totalModelsBadge">
+          <span class="pulse-indicator"></span>
+          <span id="headerModelCount">0 Models</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-container">
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         ROW 1: AUTHENTICATION & BASE URL CONFIGURATION
+         Line 1: Base URL + Fetch Button
+         Line 2: API Key
+         ═══════════════════════════════════════════════════════════════════ -->
+    <section class="section-card config-card" id="row-auth">
+      <div class="card-header">
+        <div class="header-title-wrap">
+          <div class="step-num">01</div>
+          <div>
+            <h2>API Connection &amp; Authentication</h2>
+            <p class="section-desc">Enter your Base URL on the first line and your Bearer Authorization Key on the second line.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="config-stack">
+        <!-- Line 1: Base URL + Fetch Button -->
+        <div class="config-line">
+          <div class="input-group flex-grow">
+            <label for="baseUrl">
+              <span>Gateway Base URL</span>
+              <span class="input-hint">v1 API Root Endpoint</span>
+            </label>
+            <div class="input-wrap">
+              <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <input id="baseUrl"
+                     type="url"
+                     value="https://api.rdsec.trendmicro.com/prod/aiendpoint/v1"
+                     placeholder="https://your-api-host/v1"
+                     spellcheck="false"
+                     autocomplete="off" />
+            </div>
+          </div>
+          <div class="line-action-btn">
+            <button class="btn-primary fetch-btn" id="fetchBtn" onclick="fetchModels()">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+              Fetch Live Models
+            </button>
+          </div>
+        </div>
+
+        <!-- Line 2: API Key -->
+        <div class="config-line">
+          <div class="input-group full-width">
+            <label for="apiKey">
+              <span>Authorization Bearer Key</span>
+              <span class="input-hint" id="keyStatusLabel">Paste your Bearer token (not saved on server)</span>
+            </label>
+            <div class="input-wrap">
+              <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <input id="apiKey"
+                     type="password"
+                     placeholder="Paste your Bearer API token here…"
+                     spellcheck="false"
+                     autocomplete="off" />
+              <button class="toggle-visibility-btn" type="button" onclick="toggleKeyVisibility()" title="Toggle visibility">
+                <svg id="eyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-bar" id="statusBar">
+        <div class="status-left">
+          <span class="status-dot status-ready" id="statusDot"></span>
+          <span id="statusMsg">Ready. Click any model to select and copy its name into the testing console below.</span>
+        </div>
+        <div class="filter-controls-wrap">
+          <div class="filter-top-row">
+            <div class="search-wrap">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="globalSearch" placeholder="Filter models by name or vendor…" oninput="filterAllModels(this.value)" />
+              <button class="clear-search-btn" id="clearSearchBtn" onclick="clearSearch()" style="display:none;">&times;</button>
+            </div>
+            <button class="toggle-details-btn" id="toggleDetailsBtn" onclick="toggleShowDetails()" type="button" title="Toggle model details &amp; filters" aria-pressed="false">
+              <span class="toggle-switch-pill"></span>
+              <span>Show Details</span>
+            </button>
+          </div>
+          <div class="filter-detail-rows" id="filterDetailRows">
+            <div class="filter-row-group">
+              <span class="filter-group-label">Provider</span>
+              <div class="filter-pills provider-filter-pills" id="providerFilterPills">
+                <button class="filter-pill active" data-provider="all" onclick="setProviderFilter('all')">All</button>
+                <button class="filter-pill" data-provider="trendmicro" onclick="setProviderFilter('trendmicro')">TrendMicro</button>
+                <button class="filter-pill" data-provider="azure" onclick="setProviderFilter('azure')">Azure</button>
+                <button class="filter-pill" data-provider="aws" onclick="setProviderFilter('aws')">AWS</button>
+                <button class="filter-pill" data-provider="gcp" onclick="setProviderFilter('gcp')">GCP</button>
+              </div>
+            </div>
+            <div class="filter-row-group">
+              <span class="filter-group-label">Format</span>
+              <div class="filter-pills protocol-filter-pills" id="protocolFilterPills">
+                <button class="filter-pill active" data-protocol="all" onclick="setProtocolFilter('all')">All</button>
+                <button class="filter-pill" data-protocol="chat" onclick="setProtocolFilter('chat')">/chat/completions</button>
+                <button class="filter-pill" data-protocol="messages" onclick="setProtocolFilter('messages')">/messages</button>
+                <button class="filter-pill" data-protocol="responses" onclick="setProtocolFilter('responses')">/responses</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SECTION 1: TEXT COMPLETION & REASONING (TEXT MODALITY)
+         ═══════════════════════════════════════════════════════════════════ -->
+    <section class="section-card modality-card" id="row-chat" data-modality="chat">
+      <div class="card-header">
+        <div class="header-title-wrap">
+          <div class="modality-badge badge-chat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div>
+            <div class="title-with-pill">
+              <h2>Text Completion &amp; Reasoning</h2>
+              <span class="count-pill" id="chatModelCount">0 models</span>
+            </div>
+            <p class="section-desc">Chat, instruction following, reasoning &amp; code generation models.</p>
+          </div>
+        </div>
+        <div class="modality-selected-tag" id="selectedChatTag">
+          <span class="lbl">Active Model:</span>
+          <code id="activeChatModelName">rone-free</code>
+        </div>
+      </div>
+
+      <!-- Models Grid: Max 3 Classes per row -->
+      <div class="vendor-grid-wrapper">
+        <div class="vendor-grid" id="chatVendorGrid"></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SECTION 2: IMAGE GENERATION & EDITING (IMAGE MODALITY)
+         ═══════════════════════════════════════════════════════════════════ -->
+    <section class="section-card modality-card" id="row-image" data-modality="image">
+      <div class="card-header">
+        <div class="header-title-wrap">
+          <div class="modality-badge badge-image">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          </div>
+          <div>
+            <div class="title-with-pill">
+              <h2>Image Generation &amp; Editing</h2>
+              <span class="count-pill" id="imageModelCount">0 models</span>
+            </div>
+            <p class="section-desc">Diffusion and multimodal image generation models.</p>
+          </div>
+        </div>
+        <div class="modality-selected-tag" id="selectedImageTag">
+          <span class="lbl">Active Model:</span>
+          <code id="activeImageModelName">gemini-3.1-flash-image</code>
+        </div>
+      </div>
+
+      <!-- Models Grid: Max 3 Classes per row -->
+      <div class="vendor-grid-wrapper">
+        <div class="vendor-grid" id="imageVendorGrid"></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SECTION 3: VOICE & AUDIO (VOICE MODALITY)
+         ═══════════════════════════════════════════════════════════════════ -->
+    <section class="section-card modality-card" id="row-audio" data-modality="audio">
+      <div class="card-header">
+        <div class="header-title-wrap">
+          <div class="modality-badge badge-audio">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </div>
+          <div>
+            <div class="title-with-pill">
+              <h2>Voice &amp; Audio Processing</h2>
+              <span class="count-pill" id="audioModelCount">0 models</span>
+            </div>
+            <p class="section-desc">Text-to-speech synthesis and speech transcription models.</p>
+          </div>
+        </div>
+        <div class="modality-selected-tag" id="selectedAudioTag">
+          <span class="lbl">Active Model:</span>
+          <code id="activeAudioModelName">tts-1</code>
+        </div>
+      </div>
+
+      <!-- Models Grid: Max 3 Classes per row -->
+      <div class="vendor-grid-wrapper">
+        <div class="vendor-grid" id="audioVendorGrid"></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SECTION 4: EMBEDDINGS (EMBEDDING MODALITY)
+         ═══════════════════════════════════════════════════════════════════ -->
+    <section class="section-card modality-card" id="row-embed" data-modality="embed">
+      <div class="card-header">
+        <div class="header-title-wrap">
+          <div class="modality-badge badge-embed">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </div>
+          <div>
+            <div class="title-with-pill">
+              <h2>Vector Embeddings</h2>
+              <span class="count-pill" id="embedModelCount">0 models</span>
+            </div>
+            <p class="section-desc">Dense vector representations for semantic search and retrieval.</p>
+          </div>
+        </div>
+        <div class="modality-selected-tag" id="selectedEmbedTag">
+          <span class="lbl">Active Model:</span>
+          <code id="activeEmbedModelName">text-embedding-3-small</code>
+        </div>
+      </div>
+
+      <!-- Models Grid: Max 3 Classes per row -->
+      <div class="vendor-grid-wrapper">
+        <div class="vendor-grid" id="embedVendorGrid"></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SECTION 5 (BOTTOM): UNIFIED API TESTING CONSOLE & WORKBENCH
+         ═══════════════════════════════════════════════════════════════════ -->
+    <section class="section-card workbench-unified-card" id="row-workbench">
+      <div class="card-header">
+        <div class="header-title-wrap">
+          <div class="step-num">&#9658;</div>
+          <div>
+            <h2>Unified Request Tester &amp; Playground</h2>
+            <p class="section-desc">Select a modality or click any model above to populate and test the API live.</p>
+          </div>
+        </div>
+
+        <div class="modality-tab-selector" id="workbenchModalityTabs">
+          <button class="mod-tab-btn active" data-mod="chat" onclick="switchActiveModality('chat')">
+            <span class="tab-dot" style="background:#38bdf8;"></span> Text Chat
+          </button>
+          <button class="mod-tab-btn" data-mod="image" onclick="switchActiveModality('image')">
+            <span class="tab-dot" style="background:#ec4899;"></span> Image
+          </button>
+          <button class="mod-tab-btn" data-mod="audio" onclick="switchActiveModality('audio')">
+            <span class="tab-dot" style="background:#fbbf24;"></span> Voice
+          </button>
+          <button class="mod-tab-btn" data-mod="embed" onclick="switchActiveModality('embed')">
+            <span class="tab-dot" style="background:#c084fc;"></span> Embedding
+          </button>
+        </div>
+      </div>
+
+      <!-- Workbench Container -->
+      <div class="workbench-panel">
+        <div class="workbench-header">
+          <div class="workbench-tab-title">
+            <span class="wb-target-badge" id="wbTargetModBadge">Text Chat</span>
+            <span class="wb-target-model-label">Model: <code id="wbTargetModelCode">rone-free</code></span>
+          </div>
+
+          <div class="lang-selector">
+            <button class="lang-btn active" data-lang="curl" onclick="setWorkbenchLang('curl')">cURL</button>
+            <button class="lang-btn" data-lang="py" onclick="setWorkbenchLang('py')">Python</button>
+            <button class="lang-btn" data-lang="ps" onclick="setWorkbenchLang('ps')">PowerShell</button>
+            <button class="lang-btn" data-lang="js" onclick="setWorkbenchLang('js')">JavaScript</button>
+          </div>
+        </div>
+
+        <div class="workbench-body">
+          <!-- Modality Dynamic Controls -->
+          <div class="workbench-controls">
+            
+            <!-- Controls for Chat -->
+            <div class="mod-controls" id="controls-chat">
+              <div class="control-field">
+                <label for="chatSystemPrompt">System Prompt (Optional)</label>
+                <textarea id="chatSystemPrompt" rows="2" placeholder="You are a helpful AI assistant.">You are a helpful AI assistant.</textarea>
+              </div>
+              <div class="control-field">
+                <label for="chatUserMessage">User Message</label>
+                <textarea id="chatUserMessage" rows="3" placeholder="What is the difference between synchronous and asynchronous APIs?">What is the difference between synchronous and asynchronous APIs?</textarea>
+              </div>
+              <div class="params-row">
+                <div class="param-item">
+                  <label for="chatTemperature">Temperature: <span id="tempVal">0.7</span></label>
+                  <input type="range" id="chatTemperature" min="0" max="2" step="0.1" value="0.7" oninput="document.getElementById('tempVal').textContent=this.value; updateWorkbenchSnippet();" />
+                </div>
+                <div class="param-item">
+                  <label for="chatMaxTokens">Max Tokens</label>
+                  <input type="number" id="chatMaxTokens" value="1000" min="1" max="16000" oninput="updateWorkbenchSnippet();" />
+                </div>
+                <div class="param-item toggle-item">
+                  <label for="chatStreamToggle">
+                    <span>Stream (SSE)</span>
+                  </label>
+                  <label class="switch">
+                    <input type="checkbox" id="chatStreamToggle" checked onchange="updateWorkbenchSnippet();" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Controls for Image (Generate & Edit) -->
+            <div class="mod-controls" id="controls-image" style="display:none;">
+              <div class="sub-mode-row">
+                <div class="sub-mode-tabs">
+                  <button type="button" class="sub-mode-btn active" id="btnImgModeGen" onclick="setImageSubMode('generation')">Text to Image</button>
+                  <button type="button" class="sub-mode-btn" id="btnImgModeEdit" onclick="setImageSubMode('edit')">Image Editing / Inpaint</button>
+                </div>
+                <span class="sub-mode-hint" id="imgSubModeHint">Generate high quality images from text prompts</span>
+              </div>
+
+              <!-- Upload Section for Image Edit Mode -->
+              <div class="image-upload-wrapper" id="imageEditUploadSection" style="display:none;">
+                <label class="field-label">Source Reference / Image to Edit</label>
+                <div class="upload-dropzone" id="imageDropzone" onclick="document.getElementById('imageFileInput').click()">
+                  <input type="file" id="imageFileInput" accept="image/png, image/jpeg, image/webp" style="display:none;" onchange="handleImageFileUpload(event)" />
+                  <div class="dropzone-empty" id="dropzoneEmpty">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <span>Click to browse or drag &amp; drop reference image (PNG, JPG, WebP)</span>
+                  </div>
+                  <div class="dropzone-preview" id="dropzonePreview" style="display:none;">
+                    <img id="sourceImageThumb" src="" alt="Source preview" />
+                    <div class="dropzone-meta">
+                      <span class="file-name" id="sourceImageName">image.png</span>
+                      <span class="file-size" id="sourceImageSize">120 KB</span>
+                    </div>
+                    <button type="button" class="btn-remove-upload" onclick="event.stopPropagation(); removeUploadedImage();" title="Remove image">&times;</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="control-field">
+                <label for="imagePrompt" id="imagePromptLabel">Prompt</label>
+                <textarea id="imagePrompt" rows="3" placeholder="A futuristic cybersecurity operations center, holographic globe, sleek dark UI, 8k cinematic lighting">A futuristic cybersecurity operations center, holographic globe, sleek dark UI, 8k cinematic lighting</textarea>
+              </div>
+              <div class="params-row">
+                <div class="param-item">
+                  <label for="imageSize">Output Dimensions</label>
+                  <select id="imageSize" onchange="updateWorkbenchSnippet();">
+                    <option value="1024x1024" selected>1024 × 1024 (Square 1:1)</option>
+                    <option value="1024x1792">1024 × 1792 (Portrait 9:16)</option>
+                    <option value="1792x1024">1792 × 1024 (Landscape 16:9)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Controls for Audio -->
+            <div class="mod-controls" id="controls-audio" style="display:none;">
+              <div class="control-field">
+                <label for="audioInputText">Input Text to Synthesize</label>
+                <textarea id="audioInputText" rows="3" placeholder="Welcome to the AI Endpoint Explorer. Your requests are running normally.">Welcome to the AI Endpoint Explorer. Your requests are running normally.</textarea>
+              </div>
+              <div class="params-row">
+                <div class="param-item">
+                  <label for="audioVoice">Voice Persona</label>
+                  <select id="audioVoice" onchange="updateWorkbenchSnippet();">
+                    <option value="alloy" selected>alloy (Neutral &amp; balanced)</option>
+                    <option value="ash">ash (Gentle)</option>
+                    <option value="ballad">ballad (Expressive)</option>
+                    <option value="coral">coral (Friendly)</option>
+                    <option value="echo">echo (Warm &amp; deep)</option>
+                    <option value="fable">fable (British dynamic)</option>
+                    <option value="nova">nova (Bright &amp; energetic)</option>
+                    <option value="onyx">onyx (Authoritative &amp; deep)</option>
+                    <option value="sage">sage (Calm)</option>
+                    <option value="shimmer">shimmer (Clear &amp; upbeat)</option>
+                    <option value="verse">verse (Versatile)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Controls for Embed -->
+            <div class="mod-controls" id="controls-embed" style="display:none;">
+              <div class="control-field">
+                <label for="embedInputText">Input Text Document</label>
+                <textarea id="embedInputText" rows="3" placeholder="The v1 AI gateway provides unified access to LLM chat, embeddings, audio, and image APIs.">The v1 AI gateway provides unified access to LLM chat, embeddings, audio, and image APIs.</textarea>
+              </div>
+            </div>
+
+            <!-- Execute Button Row -->
+            <div class="execute-action-row">
+              <button class="btn-execute" id="btnExecuteUnified" onclick="executeCurrentWorkbench()">
+                <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span id="btnExecuteLabel">Send Request</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Live Code Snippet Box -->
+          <div class="code-column">
+            <div class="code-box">
+              <div class="code-header">
+                <span class="code-lang-label" id="wbCodeLang">cURL Request</span>
+                <button class="copy-btn" onclick="copySnippet('wbCodeSnippet', this)">Copy</button>
+              </div>
+              <pre><code id="wbCodeSnippet"></code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Unified Response Panel -->
+        <div class="response-panel" id="unifiedResponseWrap" style="display:none;">
+          <div class="response-header">
+            <div class="resp-title">
+              <span class="resp-badge ok" id="wbRespStatusBadge">HTTP 200</span>
+              <span class="resp-meta" id="wbRespMeta"></span>
+            </div>
+            <div class="resp-tools">
+              <a class="btn-secondary btn-sm" id="wbMediaDownloadBtn" download="output" style="display:none;">Download Media</a>
+              <button class="btn-text-toggle" onclick="toggleUnifiedRawJson()">Toggle Raw JSON</button>
+              <button class="copy-btn" onclick="copySnippet('wbRawResponse', this)">Copy Output</button>
+            </div>
+          </div>
+
+          <!-- Dynamic Output Renderers -->
+          <div class="response-content-text" id="wbFormattedOutput"></div>
+          <div class="image-preview-container" id="wbImagePreviewBox" style="display:none;"></div>
+          <div class="audio-player-wrap" id="wbAudioPlayerBox" style="display:none;"></div>
+          <div class="vector-stats-row" id="wbVectorStatsRow" style="display:none;"></div>
+
+          <!-- Raw JSON Viewer -->
+          <div class="raw-json-wrap" id="wbRawWrap" style="display:none;">
+            <pre><code id="wbRawResponse"></code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal for Model Details -->
+  <div class="modal-backdrop" id="modelDetailModal" onclick="closeModelModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-vendor-tag" id="modalVendorTag">Provider</span>
+          <h3 id="modalModelName">model-name</h3>
+        </div>
+        <button class="modal-close-btn" onclick="closeModelModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-metrics-grid">
+          <div class="metric-card">
+            <span class="metric-label">Input Pricing</span>
+            <span class="metric-val" id="modalInPrice">$0.00 / 1M</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Output Pricing</span>
+            <span class="metric-val" id="modalOutPrice">$0.00 / 1M</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Total Context</span>
+            <span class="metric-val" id="modalContext">262k</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Max Input</span>
+            <span class="metric-val" id="modalMaxInput">—</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Max Output</span>
+            <span class="metric-val" id="modalMaxOutput">—</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Provider Route</span>
+            <span class="metric-val" id="modalProvider">Gateway</span>
+          </div>
+        </div>
+        <div class="modal-desc-box">
+          <label>Description &amp; Capabilities</label>
+          <p id="modalDescription">Detailed information...</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="modalCopyBtn" onclick="copyModalModelName()">Copy Model ID</button>
+          <button class="btn-primary" id="modalSelectBtn" onclick="applyModalSelection()">Select for Workbench</button>
+        </div>
+      </div>
+    </div>
   </div>
-  <span class="status-pill">Internal AI Gateway Console</span>
-</header>
 
-<main>
-
-  <!-- ── Row 0: Base URL ── -->
-  <section>
-    <h2>Base URL</h2>
-    <div class="key-row">
-      <input id="baseUrl"
-             type="url"
-             value="https://api.rdsec.trendmicro.com/prod/aiendpoint/v1"
-             placeholder="https://api.rdsec.trendmicro.com/prod/aiendpoint/v1"
-             spellcheck="false"
-             autocomplete="off" />
-    </div>
-  </section>
-
-  <!-- ── Row 1: API Key ── -->
-  <section>
-    <h2>API Key</h2>
-    <div class="key-row">
-      <textarea id="apiKey" placeholder="Paste your Bearer API key here…" spellcheck="false" autocomplete="off" rows="1"></textarea>
-      <button class="btn-primary" id="fetchBtn" onclick="fetchModels()">Fetch Models</button>
-    </div>
-    <div id="statusMsg"></div>
-  </section>
-
-  <!-- ── Row 2: Models by Vendor ── -->
-  <section id="modelSection">
-    <h2>Models by Vendor <span id="modelCountLabel" class="count"></span></h2>
-    <div id="modelPlaceholder">Enter your API key above and click <strong>Fetch Models</strong> to load models.</div>
-    <div class="vendor-grid" id="vendorGrid" style="display:none;"></div>
-  </section>
-
-  <!-- ── Row 2.5: Request Input ── -->
-  <section id="inputSection">
-    <div class="section-head">
-      <h2>Request Input</h2>
-      <span class="section-note" id="inputModeLabel">Chat message</span>
-    </div>
-
-    <div class="usage-panels">
-      <div class="usage-panel active" data-panel="chat">
-        <label class="field-label" for="userMessage">User Message</label>
-        <textarea id="userMessage"
-                  placeholder="What is the capital of France?"
-                  spellcheck="false"
-                  autocomplete="off"></textarea>
-      </div>
-
-      <div class="usage-panel" data-panel="embed">
-        <label class="field-label" for="embedInput">Embedding Text</label>
-        <textarea id="embedInput"
-                  placeholder="Hello, world!"
-                  spellcheck="false"
-                  autocomplete="off"></textarea>
-      </div>
-
-      <div class="usage-panel" data-panel="audio">
-        <div class="control-grid">
-          <div>
-            <label class="field-label" for="audioText">Speech Text</label>
-            <textarea id="audioText"
-                      placeholder="Hello world, this is a text-to-speech test."
-                      spellcheck="false"
-                      autocomplete="off"></textarea>
-          </div>
-          <div>
-            <label class="field-label" for="voiceSelect">Voice Model</label>
-            <select id="voiceSelect">
-              <option value="alloy">alloy</option>
-              <option value="ash">ash</option>
-              <option value="ballad">ballad</option>
-              <option value="coral">coral</option>
-              <option value="echo">echo</option>
-              <option value="fable">fable</option>
-              <option value="nova">nova</option>
-              <option value="onyx">onyx</option>
-              <option value="sage">sage</option>
-              <option value="shimmer">shimmer</option>
-              <option value="verse">verse</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div class="usage-panel" data-panel="image">
-        <div class="control-grid">
-          <div>
-            <label class="field-label" for="imagePrompt">Image Prompt</label>
-            <textarea id="imagePrompt"
-                      placeholder="A clean security operations dashboard on a glass desk, cinematic product photo"
-                      spellcheck="false"
-                      autocomplete="off"></textarea>
-          </div>
-          <div>
-            <label class="field-label" for="imageSize">Size</label>
-            <select id="imageSize">
-              <option value="1024x1024">1024x1024</option>
-              <option value="1024x1792">1024x1792</option>
-              <option value="1792x1024">1792x1024</option>
-            </select>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── Row 3: Example Code ── -->
-  <section>
-    <h2>Example Request</h2>
-    <div class="selector-rows">
-      <div class="selector-row" id="usageRow">
-        <button class="sel-btn active" data-usage="chat"  onclick="selectUsage('chat',  this)">Chat Completion</button>
-        <button class="sel-btn"        data-usage="embed" onclick="selectUsage('embed', this)">Embedding</button>
-        <button class="sel-btn"        data-usage="audio" onclick="selectUsage('audio', this)">Audio Speech</button>
-        <button class="sel-btn"        data-usage="image" onclick="selectUsage('image', this)">Image</button>
-      </div>
-      <div class="selector-row" id="langRow">
-        <button class="sel-btn active" data-lang="curl"  onclick="selectLang('curl',  this)">curl</button>
-        <button class="sel-btn"        data-lang="ps"    onclick="selectLang('ps',    this)">PowerShell</button>
-        <button class="sel-btn"        data-lang="py"    onclick="selectLang('py',    this)">Python</button>
-      </div>
-    </div>
-    <div class="code-box">
-      <button class="copy-snippet-btn" id="copySnippetBtn" onclick="copySnippet()">Copy</button>
-      <pre id="codeSnippet"></pre>
-    </div>
-    <div style="margin-top:10px;">
-      <button class="btn-try" id="tryBtn" onclick="tryIt()">&#9654; Try it!</button>
-    </div>
-  </section>
-
-  <!-- ── Row 4: Response ── -->
-  <section id="responseSection" style="display:none;">
-    <h2>Response <span id="responseMetaLabel" class="count"></span></h2>
-
-    <!-- Primary: clean text answer -->
-    <div class="response-text-box" id="responseText"></div>
-
-    <!-- Media preview for audio/image responses -->
-    <div class="response-media" id="responseMedia"></div>
-
-    <!-- Toggle bar for full JSON -->
-    <div class="response-toggle-bar">
-      <span>Full JSON</span>
-      <button class="btn-toggle-json" id="toggleJsonBtn" onclick="toggleJson()">&#9776; Show</button>
-    </div>
-
-    <!-- Collapsible raw JSON -->
-    <div id="rawJsonWrap">
-      <div class="code-box">
-        <button class="copy-snippet-btn" id="copyResponseBtn" onclick="copyResponse()">Copy</button>
-        <pre id="responseOutput"></pre>
-      </div>
-    </div>
-  </section>
-
-</main>
-
-<!--
-=== GitHub Pages Deployment ===
-
-This site is auto-deployed by .github/workflows/deploy.yml on every push to
-`main` and via manual "Run workflow" trigger from the Actions tab.
-
-The workflow stages these files into the deploy artifact:
-  - index.html
-  - styles.css
-  - app.js
-
-One-time repo setup:
-  Settings → Pages → Build and deployment → Source: GitHub Actions
--->
+  <!-- Toast Notification -->
+  <div class="toast" id="toast"></div>
 
 </body>
 </html>

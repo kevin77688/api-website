@@ -1,0 +1,7 @@
+# Ignore large temporary info dump and secrets
+info
+*.json
+.DS_Store
+node_modules/
+dist/
+_site/

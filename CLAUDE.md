@@ -1,83 +1,68 @@
-# RDSec AI Endpoint Explorer
+# AI Endpoint Explorer (v1 Universal Gateway)
 
-A zero-dependency, single-file static web tool for querying TrendMicro's AI
-gateway at `api.rdsec.trendmicro.com`. Built for internal RDSec team use,
-deployed as a GitHub Pages site.
+A zero-dependency, static web playground for testing and querying OpenAI-compatible v1 AI endpoints (including TrendMicro's AI gateway at `api.rdsec.trendmicro.com`).
 
-**API base:** `https://api.rdsec.trendmicro.com/prod/aiendpoint/v1`
+**Default Gateway API base:** `https://api.rdsec.trendmicro.com/prod/aiendpoint/v1`
 
-## Deployment
+## GitHub Pages Deployment
 
-1. Push **only** `index.html` to the root of the GitHub Pages branch (main or gh-pages).
-2. Settings → Pages → Source: Deploy from branch → main / (root).
-3. Do **not** commit API keys, `models.json`, `response.json`, or any captured secrets.
-4. Live at: `https://<username>.github.io`
+The site is auto-deployed by `.github/workflows/deploy.yml` on every push to `main` and via manual "Run workflow" trigger from the Actions tab.
 
-## File Structure
+The workflow stages these three core static files:
+  - `index.html`
+  - `styles.css`
+  - `app.js`
 
-```
-trendmicro_api/
-├── index.html   — entire application (HTML + CSS + JS, self-contained)
-└── CLAUDE.md    — this file
-```
+One-time repo setup:
+  Settings → Pages → Build and deployment → Source: GitHub Actions
 
 ## Architecture Overview
 
-The entire application lives in a single `index.html`. There are no build steps,
-no bundlers, no external CDN links.
+The application is completely client-side and zero-dependency (vanilla HTML5, CSS3, and modern JavaScript).
 
-### Page Sections (in DOM order)
+### Page Layout & Modality Sections
 
-| Section | Element ID / selector | Purpose |
-|---|---|---|
-| Row 1 — API Key | first `section` in `main` | API key textarea; Fetch Models button |
-| Row 2 — Model Grid | `#modelSection` | Vendor-grouped model list; hidden until fetch |
-| Row 2.5 — User Message | `#userMsgSection` | User message injected into chat snippets and `tryIt()` |
-| Row 3 — Example Code | third `section` in `main` | Usage/lang toggles; live code snippet; Try it! button |
-| Row 4 — Response | `#responseSection` | Primary text answer + collapsible full JSON |
+1. **Row 1 — Connection & Authentication**:
+   - Line 1: Gateway Base URL input + **Fetch Live Models** button.
+   - Line 2: Bearer API Key input with password visibility toggle.
+   - Persistent memory: remembers Base URL and API Key in local cookies and `localStorage`.
+   - Auto-sync: automatically fetches live models on load if a key is stored, or immediately when a key is pasted.
+   - Global search filter across all models.
 
-### State Variables
+2. **Section 1 — Text Completion & Reasoning (Chat)**:
+   - Categorized by vendor (max 3 vendor cards per row, starting with TrendMicro, OpenAI, Claude, Google, Meta, DeepSeek, etc.).
+   - Model cards sorted chronologically (Newest release first) and by capability tier (Price high to low).
+   - Price badges (`FREE`, `$X / $Y per 1M`), context limit pills (`262k`, `1M`), release dates (`YYYY-MM`), and details modal.
 
-```javascript
-let selectedModel = '';       // Model ID, set when user clicks a model row
-let selectedUsage = 'chat';   // 'chat' | 'embed' | 'audio' | 'image'
-let selectedLang  = 'curl';   // 'curl' | 'ps' | 'py'
-let allModels     = [];       // Flat string[] of model IDs from /models API
-```
+3. **Section 2 — Image Generation & Editing**:
+   - Diffusion and image generation models.
+   - Auto-hidden if no image models are supported by the gateway.
 
-### Key Functions
+4. **Section 3 — Voice & Audio (TTS / Transcribe)**:
+   - Text-to-speech, transcription (Whisper), and realtime audio models.
+   - Auto-hidden if no audio models are supported by the gateway.
 
-| Function | Purpose |
-|---|---|
-| `getKey()` | Returns trimmed API key value or `{{ your-api-key }}` placeholder |
-| `getModel()` | Returns `selectedModel` or `{{ model-id }}` placeholder |
-| `getUserMsg()` | Returns trimmed user message value or the textarea placeholder text |
-| `jsonStr(s)` | JSON-encodes a string and strips outer quotes — safe for embedding in JSON snippets |
-| `renderSnippet()` | Calls `SNIPPETS[selectedUsage][selectedLang](key, model)` and writes to `#codeSnippet` |
-| `selectUsage(id, btn)` | Sets `selectedUsage`, updates active button, re-renders snippet |
-| `selectLang(id, btn)` | Sets `selectedLang`, updates active button, re-renders snippet |
-| `fetchModels()` | GET `/models`, populates `allModels`, calls `renderAll()` |
-| `renderAll()` | Groups models by vendor, renders vendor cards, shows the grid |
-| `detectVendor(id)` | Regex-matches model ID against `VENDOR_RULES` (order matters) |
-| `tryIt()` | POST to the appropriate endpoint using current state; calls `showResponse()` |
-| `showResponse(text, isError, primaryText)` | Populates `#responseText` (primary) and `#responseOutput` (full JSON); resets toggle |
-| `toggleJson()` | Toggles `#rawJsonWrap` open/closed and updates `#toggleJsonBtn` label |
-| `copySnippet()` | Copies `#codeSnippet` text to clipboard |
-| `copyResponse()` | Copies `#responseOutput` (full raw JSON) text to clipboard |
+5. **Section 4 — Vector Embeddings**:
+   - Semantic text and multimodal vector embedding models.
+   - Auto-hidden if no embedding models are supported by the gateway.
 
-### Snippet Builders (`SNIPPETS` object)
+6. **Section 5 (Bottom) — Unified Request Tester & Playground**:
+   - Modality tabs (`Text Chat`, `Image Studio`, `Voice & Audio`, `Vector Embedding`).
+   - Dynamic inputs per modality:
+     - Chat: System prompt, User message, Temperature, Max Tokens, **Stream (SSE) toggle**.
+     - Image: Text-to-Image vs **Image Editing/Inpainting** (with reference image upload & thumbnail preview), dimensions selector.
+     - Audio: Speech text, Voice persona dropdown (alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse).
+     - Embedding: Text input for vector generation.
+   - Live multi-language code snippets: `cURL`, `Python (OpenAI SDK)`, `PowerShell`, `JavaScript (Fetch)`.
+   - Universal preview panels:
+     - Chat: Real-time SSE token stream typing animation, formatted markdown/text, latency & token usage.
+     - Image: Generated/edited image display with zoom lightbox and direct PNG download.
+     - Voice: HTML5 soundwave audio player with audio download link.
+     - Embedding: Vector dimensions summary, token counts, and float array inspector.
 
-Keyed as `SNIPPETS[usage][lang]` where each value is `(k, m) => string`.
-- `usage`: `'chat'` | `'embed'` | `'audio'` | `'image'`
-- `lang`: `'curl'` | `'ps'` | `'py'`
+### Clicking Models
 
-The chat snippets call `jsonStr(getUserMsg())` to inject the current user message
-(or placeholder) into the request body, safely escaping any special characters.
-
-### Vendor Detection (`VENDOR_RULES`)
-
-An ordered array of `{ label, color, bg, letter, test }` objects. `test` is a
-regex function over the model ID string. **Order matters** — more specific
+Clicking any model row or its Copy button copies the model ID to clipboard and automatically focuses the unified test workbench on that model and modality.
 patterns (e.g. TrendMicro internal prefixes `rone-`, `primus-`, `cybertron-`)
 come before broad ones (e.g. OpenAI `o1-`). Falls back to `VENDOR_OTHER` if no
 rule matches.
