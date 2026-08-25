@@ -3766,6 +3766,30 @@ function formatTokenCount(num) {
   return String(num);
 }
 
+// ── Release Date Extractor ──────────────────────────────────────────────────
+function extractReleaseDate(id, meta) {
+  if (!id) return null;
+  if (meta?.releaseDate) return meta.releaseDate;
+  if (meta?.model_info?.release_date) return meta.model_info.release_date;
+  if (meta?.model_info?.created_at) {
+    const d = new Date(meta.model_info.created_at);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 7);
+  }
+
+  // Check date format in ID (e.g., 20241022, 2025-05, etc.)
+  const ymdMatch = id.match(/(202[3-9])[-_]?(0[1-9]|1[0-2])[-_]?(0[1-9]|[12]\d|3[01])/);
+  if (ymdMatch) {
+    return ymdMatch[1] + "-" + ymdMatch[2];
+  }
+
+  const ymMatch = id.match(/(202[3-9])[-_](0[1-9]|1[0-2])/);
+  if (ymMatch) {
+    return ymMatch[1] + "-" + ymMatch[2];
+  }
+
+  return null;
+}
+
 // ── Modality Classification ────────────────────────────────────────────────
 function getModality(id, meta) {
   const name = id.toLowerCase();
