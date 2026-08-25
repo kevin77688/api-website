@@ -392,7 +392,7 @@
 
               <div class="control-field">
                 <label for="imagePrompt" id="imagePromptLabel">Prompt</label>
-                <textarea id="imagePrompt" rows="3" placeholder="A futuristic cybersecurity operations center, holographic globe, sleek dark UI, 8k cinematic lighting">A futuristic cybersecurity operations center, holographic globe, sleek dark UI, 8k cinematic lighting</textarea>
+                <textarea id="imagePrompt" rows="3" placeholder="A luminous cyberpunk AI neural nexus floating in deep space, hyper-detailed quantum defense matrix, radiant neon energy streams, floating holographic planetary network, 8k resolution, cinematic volumetric lighting, octane render masterpiece">A luminous cyberpunk AI neural nexus floating in deep space, hyper-detailed quantum defense matrix, radiant neon energy streams, floating holographic planetary network, 8k resolution, cinematic volumetric lighting, octane render masterpiece</textarea>
               </div>
               <div class="params-row">
                 <div class="param-item">
@@ -408,26 +408,69 @@
 
             <!-- Controls for Audio -->
             <div class="mod-controls" id="controls-audio" style="display:none;">
-              <div class="control-field">
-                <label for="audioInputText">Input Text to Synthesize</label>
-                <textarea id="audioInputText" rows="3" placeholder="Welcome to the AI Endpoint Explorer. Your requests are running normally.">Welcome to the AI Endpoint Explorer. Your requests are running normally.</textarea>
+              <div class="sub-mode-row">
+                <div class="sub-mode-tabs">
+                  <button type="button" class="sub-mode-btn active" id="btnAudioModeTTS" onclick="setAudioSubMode('tts')">Text to Speech (TTS)</button>
+                  <button type="button" class="sub-mode-btn" id="btnAudioModeSTT" onclick="setAudioSubMode('transcription')">Speech to Text (Transcription)</button>
+                </div>
+                <span class="sub-mode-hint" id="audioSubModeHint">Synthesize natural speech from input text</span>
               </div>
-              <div class="params-row">
-                <div class="param-item">
-                  <label for="audioVoice">Voice Persona</label>
-                  <select id="audioVoice" onchange="updateWorkbenchSnippet();">
-                    <option value="alloy" selected>alloy (Neutral &amp; balanced)</option>
-                    <option value="ash">ash (Gentle)</option>
-                    <option value="ballad">ballad (Expressive)</option>
-                    <option value="coral">coral (Friendly)</option>
-                    <option value="echo">echo (Warm &amp; deep)</option>
-                    <option value="fable">fable (British dynamic)</option>
-                    <option value="nova">nova (Bright &amp; energetic)</option>
-                    <option value="onyx">onyx (Authoritative &amp; deep)</option>
-                    <option value="sage">sage (Calm)</option>
-                    <option value="shimmer">shimmer (Clear &amp; upbeat)</option>
-                    <option value="verse">verse (Versatile)</option>
-                  </select>
+
+              <!-- TTS Sub-Controls -->
+              <div id="audioTTSSection">
+                <div class="control-field">
+                  <label for="audioInputText">Input Text to Synthesize</label>
+                  <textarea id="audioInputText" rows="3" placeholder="Welcome to the AI Endpoint Explorer. Your requests are running normally.">Welcome to the AI Endpoint Explorer. Your requests are running normally.</textarea>
+                </div>
+                <div class="params-row">
+                  <div class="param-item">
+                    <label for="audioVoice">Voice Persona</label>
+                    <select id="audioVoice" onchange="updateWorkbenchSnippet();">
+                      <option value="alloy" selected>alloy (Neutral &amp; balanced)</option>
+                      <option value="ash">ash (Gentle)</option>
+                      <option value="ballad">ballad (Expressive)</option>
+                      <option value="coral">coral (Friendly)</option>
+                      <option value="echo">echo (Warm &amp; deep)</option>
+                      <option value="fable">fable (British dynamic)</option>
+                      <option value="nova">nova (Bright &amp; energetic)</option>
+                      <option value="onyx">onyx (Authoritative &amp; deep)</option>
+                      <option value="sage">sage (Calm)</option>
+                      <option value="shimmer">shimmer (Clear &amp; upbeat)</option>
+                      <option value="verse">verse (Versatile)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- STT / Transcription Sub-Controls -->
+              <div id="audioSTTSection" style="display:none;">
+                <div class="image-upload-wrapper">
+                  <label class="field-label">Audio File to Transcribe (.mp3, .wav, .m4a, .webm, .ogg)</label>
+                  <div class="upload-dropzone" id="audioDropzone" onclick="document.getElementById('audioFileInput').click()">
+                    <input type="file" id="audioFileInput" accept="audio/mp3, audio/mpeg, audio/wav, audio/m4a, audio/webm, audio/ogg, audio/x-m4a, audio/*" style="display:none;" onchange="handleAudioFileUpload(event)" />
+                    <div class="dropzone-empty" id="audioDropzoneEmpty">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                      <span>Click to select or drag &amp; drop audio file (MP3, WAV, M4A, WebM)</span>
+                    </div>
+                    <div class="dropzone-preview" id="audioDropzonePreview" style="display:none;">
+                      <div class="audio-file-icon">🎵</div>
+                      <div class="dropzone-meta">
+                        <span class="file-name" id="sourceAudioName">audio.mp3</span>
+                        <span class="file-size" id="sourceAudioSize">1.2 MB</span>
+                      </div>
+                      <button type="button" class="btn-remove-upload" onclick="event.stopPropagation(); removeUploadedAudio();" title="Remove audio">&times;</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="params-row" style="margin-top: 10px;">
+                  <div class="param-item">
+                    <label for="audioLanguage">Language Code (Optional)</label>
+                    <input type="text" id="audioLanguage" placeholder="en, zh, ja, es... (default: auto)" oninput="updateWorkbenchSnippet();" />
+                  </div>
+                  <div class="param-item">
+                    <label for="audioPromptContext">Prompt / Context (Optional)</label>
+                    <input type="text" id="audioPromptContext" placeholder="Optional context or spelling hints..." oninput="updateWorkbenchSnippet();" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -453,8 +496,16 @@
           <div class="code-column">
             <div class="code-box">
               <div class="code-header">
+                <div class="terminal-dots">
+                  <span class="t-dot dot-red"></span>
+                  <span class="t-dot dot-yellow"></span>
+                  <span class="t-dot dot-green"></span>
+                </div>
                 <span class="code-lang-label" id="wbCodeLang">cURL Request</span>
-                <button class="copy-btn" onclick="copySnippet('wbCodeSnippet', this)">Copy</button>
+                <button class="copy-btn" onclick="copySnippet('wbCodeSnippet', this)">
+                  <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  <span>Copy</span>
+                </button>
               </div>
               <pre><code id="wbCodeSnippet"></code></pre>
             </div>
@@ -476,7 +527,20 @@
           </div>
 
           <!-- Dynamic Output Renderers -->
-          <div class="response-content-text" id="wbFormattedOutput"></div>
+          <div class="cyber-stream-panel" id="wbChatStreamPanel" style="display:none;">
+            <div class="cyber-hud-header">
+              <span class="cyber-hud-status" id="wbStreamHudStatus">
+                <span class="cyber-hud-dot"></span>
+                <span>NEURAL STREAM // SSE PROTOCOL</span>
+              </span>
+              <div class="cyber-hud-telemetry" id="wbStreamHudTelemetry">
+                <span class="cyber-telemetry-tag" id="wbTokenTicker">0 TOKENS</span>
+                <span class="cyber-telemetry-tag" id="wbSpeedTicker">0 T/S</span>
+              </div>
+            </div>
+            <div class="response-content-text" id="wbFormattedOutput"></div>
+          </div>
+          
           <div class="image-preview-container" id="wbImagePreviewBox" style="display:none;"></div>
           <div class="audio-player-wrap" id="wbAudioPlayerBox" style="display:none;"></div>
           <div class="vector-stats-row" id="wbVectorStatsRow" style="display:none;"></div>

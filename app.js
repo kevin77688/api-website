@@ -3727,6 +3727,10 @@ let imageSubMode = "generation";
 let uploadedImageBase64 = "";
 let uploadedImageFile = null;
 
+// Audio sub-mode: 'tts' | 'transcription'
+let audioSubMode = "tts";
+let uploadedAudioFile = null;
+
 // In-memory model registry
 let currentModelMap = new Map();
 let currentModalModel = null;
@@ -3854,12 +3858,19 @@ function escapeJson(str) {
   return JSON.stringify(str || "").slice(1, -1);
 }
 
+function escapeHtml(str) {
+  if (str == null) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 // ── App Initialization ─────────────────────────────────────────────────────
 function initApp() {
   currentModelMap.clear();
-  for (const [name, meta] of Object.entries(MODEL_CATALOG)) {
-    currentModelMap.set(name, { id: name, ...meta });
-  }
 
   const storedBaseUrl = getStoredValue("v1_base_url");
   const storedApiKey = getStoredValue("v1_api_key");
@@ -3880,8 +3891,10 @@ function initApp() {
   applyShowDetailsState();
 
   if (storedApiKey) {
-    setStatus("Restored saved credentials from cookie. Syncing live models...", "loading");
+    setStatus("Restored saved credentials from storage. Requesting live models from gateway...", "loading");
     fetchModels(true);
+  } else {
+    setStatus("Enter your Bearer API Key and click 'Fetch Live Models' to discover real models from your gateway.", "ready");
   }
 }
 
@@ -3993,11 +4006,22 @@ function getSupportedProtocols(id, meta) {
   return list;
 }
 
+function isTranscriptionModel(id, meta) {
+  const name = (id || "").toLowerCase();
+  const mode = (meta?.mode || "").toLowerCase();
+  return mode.includes("transcription") || name.includes("whisper") || name.includes("transcribe") || name.includes("diarize") || name.includes("asr");
+}
+
 function getPrimaryProtocolTag(id, meta) {
   const mod = getModality(id, meta);
   if (mod === "embed") return { key: "embed", label: "/embed", title: "Endpoint: /v1/embeddings" };
   if (mod === "image") return { key: "image", label: "/images", title: "Endpoint: /v1/images/generations & edits" };
-  if (mod === "audio") return { key: "audio", label: "/audio", title: "Endpoint: /v1/audio/speech & transcriptions" };
+  if (mod === "audio") {
+    if (isTranscriptionModel(id, meta)) {
+      return { key: "transcribe", label: "STT · /transcriptions", title: "Speech-to-Text: /v1/audio/transcriptions" };
+    }
+    return { key: "speech", label: "TTS · /speech", title: "Text-to-Speech: /v1/audio/speech" };
+  }
 
   const mode = (meta?.mode || "").toLowerCase();
   const name = id.toLowerCase();
@@ -4015,12 +4039,43 @@ function getPrimaryProtocolTag(id, meta) {
 function updateHeaderCount() {
   const total = currentModelMap.size;
   const badge = document.getElementById("headerModelCount");
-  if (badge) badge.textContent = total + " Models Cataloged";
+  if (badge) {
+    badge.textContent = total > 0 ? (total + " Models Cataloged") : "0 Models";
+  }
 }
 
 // ── Render All Modality Grids & Auto-Hide Empty Ones ───────────────────────
 function renderAllModalityGrids(filterText = "") {
   const filter = filterText.trim().toLowerCase();
+
+  const navIdMap = {
+    chat: "navLinkChat",
+    image: "navLinkImage",
+    audio: "navLinkAudio",
+    embed: "navLinkEmbed"
+  };
+
+  const totalLoaded = currentModelMap.size;
+  if (totalLoaded === 0) {
+    const chatSection = document.getElementById("row-chat");
+    const chatNav = document.getElementById("navLinkChat");
+    if (chatSection) chatSection.style.display = "";
+    if (chatNav) chatNav.style.display = "";
+    const chatGrid = document.getElementById("chatVendorGrid");
+    if (chatGrid) {
+      chatGrid.innerHTML = '<div class="empty-state-card"><div class="empty-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><p>No Live Models Loaded</p><span>Enter your API Key above and click <strong>Fetch Live Models</strong> to discover and test real models from your gateway.</span></div>';
+    }
+    const chatCount = document.getElementById("chatModelCount");
+    if (chatCount) chatCount.textContent = "0 models";
+
+    for (const mod of ["image", "audio", "embed"]) {
+      const s = document.getElementById("row-" + mod);
+      const n = document.getElementById(navIdMap[mod]);
+      if (s) s.style.display = "none";
+      if (n) n.style.display = "none";
+    }
+    return;
+  }
 
   const modalityBuckets = {
     chat: [],
@@ -4057,13 +4112,6 @@ function renderAllModalityGrids(filterText = "") {
   }
 
   const modalities = ["chat", "image", "audio", "embed"];
-  const navIdMap = {
-    chat: "navLinkChat",
-    image: "navLinkImage",
-    audio: "navLinkAudio",
-    embed: "navLinkEmbed"
-  };
-
   let firstAvailableModality = null;
 
   for (const mod of modalities) {
@@ -4114,26 +4162,77 @@ function renderModalityGrid(modality, items) {
     vendorMap.get(v.key).models.push(item);
   }
 
-  for (const [key, data] of vendorMap.entries()) {
-    if (data.models.length === 0) continue;
+  // If Voice modality, separate into Text-to-Speech (TTS) vs Speech-to-Text (Transcription) class cards
+  const groupsToRender = [];
+  if (modality === "audio") {
+    for (const [key, data] of vendorMap.entries()) {
+      if (data.models.length === 0) continue;
+      const ttsModels = data.models.filter(m => !isTranscriptionModel(m.id, m.meta));
+      const sttModels = data.models.filter(m => isTranscriptionModel(m.id, m.meta));
 
-    const vendor = data.vendor;
+      if (ttsModels.length > 0) {
+        groupsToRender.push({
+          vendor: data.vendor,
+          key: key + "-tts",
+          classTitle: data.vendor.label + " · Text-to-Speech (TTS)",
+          models: ttsModels
+        });
+      }
+      if (sttModels.length > 0) {
+        groupsToRender.push({
+          vendor: data.vendor,
+          key: key + "-stt",
+          classTitle: data.vendor.label + " · Speech-to-Text (Transcription)",
+          models: sttModels
+        });
+      }
+    }
+  } else {
+    for (const [key, data] of vendorMap.entries()) {
+      if (data.models.length === 0) continue;
+      groupsToRender.push({
+        vendor: data.vendor,
+        key: key,
+        classTitle: data.vendor.label,
+        models: data.models
+      });
+    }
+  }
+
+  for (const group of groupsToRender) {
+    const vendor = group.vendor;
     const card = document.createElement("div");
     card.className = "vendor-card";
 
     const header = document.createElement("div");
     header.className = "vendor-card-header";
     header.innerHTML = '<span class="vendor-icon" style="background:' + vendor.bg + '">' + (vendor.iconSvg || vendor.letter) + '</span>' +
-      '<span>' + vendor.label + '</span>' +
-      '<span class="count-badge">' + data.models.length + '</span>';
+      '<span>' + group.classTitle + '</span>' +
+      '<span class="count-badge">' + group.models.length + '</span>';
     card.appendChild(header);
 
     const body = document.createElement("div");
     body.className = "vendor-card-body";
 
-    data.models.sort((a, b) => {
-      const dateA = a.meta?.releaseDate || "2024-01-01";
-      const dateB = b.meta?.releaseDate || "2024-01-01";
+    group.models.sort((a, b) => {
+      // Custom ordering for TrendMicro models
+      if (group.key.startsWith("trendmicro")) {
+        const getTrendMicroPriority = (id) => {
+          const lower = id.toLowerCase();
+          if (lower === "rone-free") return 1;
+          if (lower === "rone-general") return 2;
+          if (lower === "mock-llm") return 98;
+          if (lower === "rone-auto") return 99;
+          return 50; // middle models sorted by release date
+        };
+
+        const prioA = getTrendMicroPriority(a.id);
+        const prioB = getTrendMicroPriority(b.id);
+        if (prioA !== prioB) return prioA - prioB;
+      }
+
+      const dateA = extractReleaseDate(a.id, a.meta) || a.meta?.releaseDate || "2024-01";
+      const dateB = extractReleaseDate(b.id, b.meta) || b.meta?.releaseDate || "2024-01";
       if (dateB !== dateA) return dateB.localeCompare(dateA);
 
       const priceA = (a.meta?.outCost ?? a.meta?.inCost ?? 0);
@@ -4143,7 +4242,7 @@ function renderModalityGrid(modality, items) {
       return a.id.localeCompare(b.id);
     });
 
-    for (const model of data.models) {
+    for (const model of group.models) {
       const row = createModelRow(modality, model.id, model.meta, vendor);
       body.appendChild(row);
     }
@@ -4182,11 +4281,18 @@ function createModelRow(modality, id, meta, vendor) {
   }
 
   // 2. Pricing Badge
-  const inCost = meta?.inCost;
-  const outCost = meta?.outCost;
+  let inCost = meta?.inCost;
+  let outCost = meta?.outCost;
+  const isTrendMicroModel = vendor?.key === "trendmicro" || getCloudProvider(id, meta) === "trendmicro" || id.includes("-gmi") || id.includes("-ray") || /^(rone-|primus-|cybertron-)/i.test(id) || id === "mock-llm";
+  
+  if (isTrendMicroModel && inCost == null) {
+    inCost = 0;
+    outCost = 0;
+  }
+
   const priceBadge = document.createElement("span");
 
-  if (inCost === 0 && outCost === 0) {
+  if (inCost === 0 && (outCost === 0 || outCost == null)) {
     priceBadge.className = "price-badge free";
     priceBadge.textContent = "FREE";
   } else if (inCost != null && outCost != null) {
@@ -4317,6 +4423,16 @@ function onModelClicked(modality, id) {
   const tagEl = document.getElementById("active" + capitalize(modality) + "ModelName");
   if (tagEl) tagEl.textContent = id;
 
+  if (modality === "audio") {
+    const meta = currentModelMap.get(id);
+    if (isTranscriptionModel(id, meta)) {
+      setAudioSubMode("transcription");
+    } else {
+      setAudioSubMode("tts");
+      updateVoiceSelectorForModel(id);
+    }
+  }
+
   switchActiveModality(modality);
 }
 
@@ -4340,8 +4456,86 @@ function switchActiveModality(modality) {
   const targetCode = document.getElementById("wbTargetModelCode");
   if (targetCode) targetCode.textContent = selectedModels[modality] || "Default";
 
+  if (modality === "audio") {
+    updateVoiceSelectorForModel(selectedModels.audio);
+  }
+
   updateExecuteButtonLabel();
   updateWorkbenchSnippet();
+}
+
+// ── Dynamic Audio Voice Selector ───────────────────────────────────────────
+function updateVoiceSelectorForModel(modelId) {
+  const voiceSelect = document.getElementById("audioVoice");
+  if (!voiceSelect) return;
+
+  const currentVal = voiceSelect.value;
+  const m = (modelId || "").toLowerCase();
+
+  let voices = [];
+  const isEleven = m.includes("eleven");
+  const isGpt4oAudio = m.includes("gpt-4o-audio") || m.includes("realtime") || m.includes("audio-preview");
+  const isTtsClassic = m.includes("tts-1") || m.includes("tts");
+
+  if (isEleven) {
+    voices = [
+      { value: "21m00Tcm4TlvDq8ikWAM", label: "Rachel (Calm & warm)" },
+      { value: "AZnzlk1XvdvUeBnXmlld", label: "Domi (Confident & energetic)" },
+      { value: "EXAVITQu4vr4xnSDxMaL", label: "Bella (Soft & expressive)" },
+      { value: "ErXwobaYiN019PkySvjV", label: "Antoni (Well-rounded & clear)" },
+      { value: "MF3mGyEYCl7XYWbV9V6O", label: "Elli (Youthful & clear)" },
+      { value: "TxGEqnHWrfWFTfGW9XjX", label: "Josh (Deep & resonant)" },
+      { value: "VR6AewLTigWG4xSOukaG", label: "Arnold (Crisp & narrative)" },
+      { value: "pNInz6obpgDQGcFmaJgB", label: "Adam (Dominant & warm)" },
+      { value: "yoZ06aMxZJJ28mfd3POQ", label: "Sam (Dynamic & American)" }
+    ];
+  } else if (isGpt4oAudio) {
+    // OpenAI GPT-4o Audio / Realtime specific 8 personas
+    voices = [
+      { value: "alloy", label: "alloy (Neutral & balanced)" },
+      { value: "ash", label: "ash (Gentle & soft)" },
+      { value: "ballad", label: "ballad (Expressive & narrative)" },
+      { value: "coral", label: "coral (Friendly & empathetic)" },
+      { value: "echo", label: "echo (Warm & deep)" },
+      { value: "sage", label: "sage (Calm & thoughtful)" },
+      { value: "shimmer", label: "shimmer (Clear & upbeat)" },
+      { value: "verse", label: "verse (Versatile & dynamic)" }
+    ];
+  } else if (isTtsClassic) {
+    // OpenAI TTS-1 & TTS-1-HD 6 classic personas
+    voices = [
+      { value: "alloy", label: "alloy (Neutral & balanced)" },
+      { value: "echo", label: "echo (Warm & deep)" },
+      { value: "fable", label: "fable (British dynamic)" },
+      { value: "onyx", label: "onyx (Authoritative & deep)" },
+      { value: "nova", label: "nova (Bright & energetic)" },
+      { value: "shimmer", label: "shimmer (Clear & upbeat)" }
+    ];
+  } else {
+    // Fallback combined list
+    voices = [
+      { value: "alloy", label: "alloy (Neutral & balanced)" },
+      { value: "echo", label: "echo (Warm & deep)" },
+      { value: "fable", label: "fable (British dynamic)" },
+      { value: "onyx", label: "onyx (Authoritative & deep)" },
+      { value: "nova", label: "nova (Bright & energetic)" },
+      { value: "shimmer", label: "shimmer (Clear & upbeat)" },
+      { value: "ash", label: "ash (Gentle - Audio Preview)" },
+      { value: "ballad", label: "ballad (Expressive - Audio Preview)" },
+      { value: "coral", label: "coral (Friendly - Audio Preview)" },
+      { value: "sage", label: "sage (Calm - Audio Preview)" },
+      { value: "verse", label: "verse (Versatile - Audio Preview)" }
+    ];
+  }
+
+  voiceSelect.innerHTML = voices.map(v => `<option value="${v.value}">${v.label}</option>`).join("");
+
+  const exists = voices.some(v => v.value === currentVal);
+  if (exists) {
+    voiceSelect.value = currentVal;
+  } else if (voices.length > 0) {
+    voiceSelect.value = voices[0].value;
+  }
 }
 
 function updateExecuteButtonLabel() {
@@ -4353,10 +4547,73 @@ function updateExecuteButtonLabel() {
   } else if (activeWorkbenchModality === "image") {
     btnLabelEl.textContent = imageSubMode === "edit" ? "Edit / Inpaint Image" : "Generate Image";
   } else if (activeWorkbenchModality === "audio") {
-    btnLabelEl.textContent = "Synthesize Speech";
+    btnLabelEl.textContent = audioSubMode === "transcription" ? "Transcribe Audio" : "Synthesize Speech";
   } else if (activeWorkbenchModality === "embed") {
     btnLabelEl.textContent = "Calculate Vector";
   }
+}
+
+// ── Audio Sub-Mode (TTS vs STT Transcription) ──────────────────────────────
+function setAudioSubMode(mode) {
+  audioSubMode = mode;
+
+  const btnTTS = document.getElementById("btnAudioModeTTS");
+  const btnSTT = document.getElementById("btnAudioModeSTT");
+  const ttsSec = document.getElementById("audioTTSSection");
+  const sttSec = document.getElementById("audioSTTSection");
+  const hint = document.getElementById("audioSubModeHint");
+
+  if (btnTTS) btnTTS.classList.toggle("active", mode === "tts");
+  if (btnSTT) btnSTT.classList.toggle("active", mode === "transcription");
+
+  if (mode === "transcription") {
+    if (ttsSec) ttsSec.style.display = "none";
+    if (sttSec) sttSec.style.display = "block";
+    if (hint) hint.textContent = "Transcribe audio speech (.mp3, .wav, .m4a) to text";
+  } else {
+    if (ttsSec) ttsSec.style.display = "block";
+    if (sttSec) sttSec.style.display = "none";
+    if (hint) hint.textContent = "Synthesize natural speech from input text";
+  }
+
+  updateExecuteButtonLabel();
+  updateWorkbenchSnippet();
+}
+
+function handleAudioFileUpload(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  uploadedAudioFile = file;
+
+  const nameEl = document.getElementById("sourceAudioName");
+  const sizeEl = document.getElementById("sourceAudioSize");
+  const emptyBox = document.getElementById("audioDropzoneEmpty");
+  const previewBox = document.getElementById("audioDropzonePreview");
+
+  if (nameEl) nameEl.textContent = file.name;
+  if (sizeEl) sizeEl.textContent = (file.size / (1024 * 1024)).toFixed(2) + " MB";
+
+  if (emptyBox) emptyBox.style.display = "none";
+  if (previewBox) previewBox.style.display = "flex";
+
+  showToast("Audio selected: " + file.name);
+  updateWorkbenchSnippet();
+}
+
+function removeUploadedAudio() {
+  uploadedAudioFile = null;
+
+  const fileInput = document.getElementById("audioFileInput");
+  if (fileInput) fileInput.value = "";
+
+  const emptyBox = document.getElementById("audioDropzoneEmpty");
+  const previewBox = document.getElementById("audioDropzonePreview");
+  if (emptyBox) emptyBox.style.display = "flex";
+  if (previewBox) previewBox.style.display = "none";
+
+  showToast("Audio file removed");
+  updateWorkbenchSnippet();
 }
 
 // ── Image Sub-Mode (Generation vs Edit/Inpaint) ─────────────────────────────
@@ -4566,7 +4823,7 @@ function updateWorkbenchSnippet() {
         "console.log(data.choices[0].message.content);";
     }
   } else if (modality === "image") {
-    const prompt = (document.getElementById("imagePrompt")?.value || "").trim() || "A futuristic cybersecurity operations center";
+    const prompt = (document.getElementById("imagePrompt")?.value || "").trim() || "A luminous cyberpunk AI neural nexus floating in deep space, hyper-detailed quantum defense matrix, radiant neon energy streams, floating holographic planetary network, 8k resolution, cinematic volumetric lighting, octane render masterpiece";
     const size = document.getElementById("imageSize")?.value || "1024x1024";
 
     if (imageSubMode === "edit") {
@@ -4673,61 +4930,184 @@ function updateWorkbenchSnippet() {
       }
     }
   } else if (modality === "audio") {
-    const text = (document.getElementById("audioInputText")?.value || "").trim() || "Hello world";
-    const voice = document.getElementById("audioVoice")?.value || "alloy";
+    const isTranscribe = audioSubMode === "transcription" || isTranscriptionModel(model);
 
-    if (lang === "curl") {
-      snippet = "curl --location '" + baseUrl + "/audio/speech' \\\n" +
-        "  --header 'Content-Type: application/json' \\\n" +
-        "  --header 'Authorization: Bearer " + key + "' \\\n" +
-        "  --data '{\n" +
-        "    \"model\": \"" + model + "\",\n" +
-        "    \"input\": \"" + escapeJson(text) + "\",\n" +
-        "    \"voice\": \"" + voice + "\"\n" +
-        "  }' \\\n" +
-        "  --output speech.mp3";
-    } else if (lang === "py") {
-      snippet = "import openai\n" +
-        "from pathlib import Path\n\n" +
-        "client = openai.OpenAI(\n" +
-        "    base_url=\"" + baseUrl + "\",\n" +
-        "    api_key=\"" + key + "\"\n" +
-        ")\n\n" +
-        "response = client.audio.speech.create(\n" +
-        "    model=\"" + model + "\",\n" +
-        "    voice=\"" + voice + "\",\n" +
-        "    input=" + JSON.stringify(text) + "\n" +
-        ")\n\n" +
-        "Path(\"speech.mp3\").write_bytes(response.content)\n" +
-        "print(\"Saved speech.mp3\")";
-    } else if (lang === "ps") {
-      snippet = "$headers = @{\n" +
-        "    \"Content-Type\"  = \"application/json\"\n" +
-        "    \"Authorization\" = \"Bearer " + key + "\"\n" +
-        "}\n\n" +
-        "$body = @'\n" +
-        "{\n" +
-        "    \"model\": \"" + model + "\",\n" +
-        "    \"input\": \"" + escapeJson(text) + "\",\n" +
-        "    \"voice\": \"" + voice + "\"\n" +
-        "}\n" +
-        "'@\n\n" +
-        "Invoke-RestMethod '" + baseUrl + "/audio/speech' -Method POST -Headers $headers -Body $body -OutFile speech.mp3";
-    } else if (lang === "js") {
-      snippet = "const response = await fetch('" + baseUrl + "/audio/speech', {\n" +
-        "  method: 'POST',\n" +
-        "  headers: {\n" +
-        "    'Content-Type': 'application/json',\n" +
-        "    'Authorization': 'Bearer " + key + "'\n" +
-        "  },\n" +
-        "  body: JSON.stringify({\n" +
-        "    model: '" + model + "',\n" +
-        "    input: " + JSON.stringify(text) + ",\n" +
-        "    voice: '" + voice + "'\n" +
-        "  })\n" +
-        "});\n\n" +
-        "const blob = await response.blob();\n" +
-        "const audioUrl = URL.createObjectURL(blob);";
+    if (isTranscribe) {
+      const fileName = uploadedAudioFile ? uploadedAudioFile.name : "sample.mp3";
+      const langCode = (document.getElementById("audioLanguage")?.value || "").trim();
+      const promptCtx = (document.getElementById("audioPromptContext")?.value || "").trim();
+
+      if (lang === "curl") {
+        snippet = "curl --location '" + baseUrl + "/audio/transcriptions' \\\n" +
+          "  --header 'Authorization: Bearer " + key + "' \\\n" +
+          "  --form 'file=@\"" + fileName + "\"' \\\n" +
+          "  --form 'model=\"" + model + "\"'";
+        if (langCode) snippet += " \\\n  --form 'language=\"" + langCode + "\"'";
+        if (promptCtx) snippet += " \\\n  --form 'prompt=\"" + escapeJson(promptCtx) + "\"'";
+      } else if (lang === "py") {
+        snippet = "import openai\n\n" +
+          "client = openai.OpenAI(\n" +
+          "    base_url=\"" + baseUrl + "\",\n" +
+          "    api_key=\"" + key + "\"\n" +
+          ")\n\n" +
+          "with open(\"" + fileName + "\", \"rb\") as audio_file:\n" +
+          "    transcription = client.audio.transcriptions.create(\n" +
+          "        model=\"" + model + "\",\n" +
+          "        file=audio_file" + (langCode ? (",\n        language=\"" + langCode + "\"") : "") + (promptCtx ? (",\n        prompt=" + JSON.stringify(promptCtx)) : "") + "\n" +
+          "    )\n\n" +
+          "print(transcription.text)";
+      } else if (lang === "ps") {
+        snippet = "$headers = @{ \"Authorization\" = \"Bearer " + key + "\" }\n" +
+          "$form = @{\n" +
+          "    file = Get-Item -Path \"" + fileName + "\"\n" +
+          "    model = \"" + model + "\"\n" +
+          "}\n\n" +
+          "$response = Invoke-RestMethod '" + baseUrl + "/audio/transcriptions' -Method POST -Headers $headers -Form $form\n" +
+          "$response.text";
+      } else if (lang === "js") {
+        snippet = "const formData = new FormData();\n" +
+          "formData.append('file', audioFile);\n" +
+          "formData.append('model', '" + model + "');\n" +
+          (langCode ? "formData.append('language', '" + langCode + "');\n" : "") +
+          (promptCtx ? "formData.append('prompt', " + JSON.stringify(promptCtx) + ");\n" : "") +
+          "\nconst response = await fetch('" + baseUrl + "/audio/transcriptions', {\n" +
+          "  method: 'POST',\n" +
+          "  headers: { 'Authorization': 'Bearer " + key + "' },\n" +
+          "  body: formData\n" +
+          "});\n\n" +
+          "const data = await response.json();\n" +
+          "console.log(data.text);";
+      }
+    } else {
+      const text = (document.getElementById("audioInputText")?.value || "").trim() || "Hello world";
+      const voice = document.getElementById("audioVoice")?.value || "alloy";
+      const isChatAudio = isChatAudioModel(model);
+
+      if (isChatAudio) {
+        if (lang === "curl") {
+          snippet = "curl --location '" + baseUrl + "/chat/completions' \\\n" +
+            "  --header 'Content-Type: application/json' \\\n" +
+            "  --header 'Authorization: Bearer " + key + "' \\\n" +
+            "  --data '{\n" +
+            "    \"model\": \"" + model + "\",\n" +
+            "    \"modalities\": [\"text\", \"audio\"],\n" +
+            "    \"audio\": {\n" +
+            "      \"voice\": \"" + voice + "\",\n" +
+            "      \"format\": \"mp3\"\n" +
+            "    },\n" +
+            "    \"messages\": [\n" +
+            "      { \"role\": \"user\", \"content\": \"" + escapeJson(text) + "\" }\n" +
+            "    ]\n" +
+            "  }'";
+        } else if (lang === "py") {
+          snippet = "import openai\n" +
+            "import base64\n" +
+            "from pathlib import Path\n\n" +
+            "client = openai.OpenAI(\n" +
+            "    base_url=\"" + baseUrl + "\",\n" +
+            "    api_key=\"" + key + "\"\n" +
+            ")\n\n" +
+            "response = client.chat.completions.create(\n" +
+            "    model=\"" + model + "\",\n" +
+            "    modalities=[\"text\", \"audio\"],\n" +
+            "    audio={\"voice\": \"" + voice + "\", \"format\": \"mp3\"},\n" +
+            "    messages=[{\"role\": \"user\", \"content\": " + JSON.stringify(text) + "}]\n" +
+            ")\n\n" +
+            "audio_bytes = base64.b64decode(response.choices[0].message.audio.data)\n" +
+            "Path(\"speech.mp3\").write_bytes(audio_bytes)\n" +
+            "print(\"Transcript:\", response.choices[0].message.audio.transcript)";
+        } else if (lang === "ps") {
+          snippet = "$headers = @{\n" +
+            "    \"Content-Type\"  = \"application/json\"\n" +
+            "    \"Authorization\" = \"Bearer " + key + "\"\n" +
+            "}\n\n" +
+            "$body = @'\n" +
+            "{\n" +
+            "    \"model\": \"" + model + "\",\n" +
+            "    \"modalities\": [\"text\", \"audio\"],\n" +
+            "    \"audio\": {\n" +
+            "        \"voice\": \"" + voice + "\",\n" +
+            "        \"format\": \"mp3\"\n" +
+            "    },\n" +
+            "    \"messages\": [\n" +
+            "        { \"role\": \"user\", \"content\": \"" + escapeJson(text) + "\" }\n" +
+            "    ]\n" +
+            "}\n" +
+            "'@\n\n" +
+            "$response = Invoke-RestMethod '" + baseUrl + "/chat/completions' -Method POST -Headers $headers -Body $body\n" +
+            "$response | ConvertTo-Json -Depth 5";
+        } else if (lang === "js") {
+          snippet = "const response = await fetch('" + baseUrl + "/chat/completions', {\n" +
+            "  method: 'POST',\n" +
+            "  headers: {\n" +
+            "    'Content-Type': 'application/json',\n" +
+            "    'Authorization': 'Bearer " + key + "'\n" +
+            "  },\n" +
+            "  body: JSON.stringify({\n" +
+            "    model: '" + model + "',\n" +
+            "    modalities: ['text', 'audio'],\n" +
+            "    audio: { voice: '" + voice + "', format: 'mp3' },\n" +
+            "    messages: [{ role: 'user', content: " + JSON.stringify(text) + " }]\n" +
+            "  })\n" +
+            "});\n\n" +
+            "const data = await response.json();\n" +
+            "console.log(data.choices[0].message);";
+        }
+      } else {
+        if (lang === "curl") {
+          snippet = "curl --location '" + baseUrl + "/audio/speech' \\\n" +
+            "  --header 'Content-Type: application/json' \\\n" +
+            "  --header 'Authorization: Bearer " + key + "' \\\n" +
+            "  --data '{\n" +
+            "    \"model\": \"" + model + "\",\n" +
+            "    \"input\": \"" + escapeJson(text) + "\",\n" +
+            "    \"voice\": \"" + voice + "\"\n" +
+            "  }' \\\n" +
+            "  --output speech.mp3";
+        } else if (lang === "py") {
+          snippet = "import openai\n" +
+            "from pathlib import Path\n\n" +
+            "client = openai.OpenAI(\n" +
+            "    base_url=\"" + baseUrl + "\",\n" +
+            "    api_key=\"" + key + "\"\n" +
+            ")\n\n" +
+            "response = client.audio.speech.create(\n" +
+            "    model=\"" + model + "\",\n" +
+            "    voice=\"" + voice + "\",\n" +
+            "    input=" + JSON.stringify(text) + "\n" +
+            ")\n\n" +
+            "Path(\"speech.mp3\").write_bytes(response.content)\n" +
+            "print(\"Saved speech.mp3\")";
+        } else if (lang === "ps") {
+          snippet = "$headers = @{\n" +
+            "    \"Content-Type\"  = \"application/json\"\n" +
+            "    \"Authorization\" = \"Bearer " + key + "\"\n" +
+            "}\n\n" +
+            "$body = @'\n" +
+            "{\n" +
+            "    \"model\": \"" + model + "\",\n" +
+            "    \"input\": \"" + escapeJson(text) + "\",\n" +
+            "    \"voice\": \"" + voice + "\"\n" +
+            "}\n" +
+            "'@\n\n" +
+            "Invoke-RestMethod '" + baseUrl + "/audio/speech' -Method POST -Headers $headers -Body $body -OutFile speech.mp3";
+        } else if (lang === "js") {
+          snippet = "const response = await fetch('" + baseUrl + "/audio/speech', {\n" +
+            "  method: 'POST',\n" +
+            "  headers: {\n" +
+            "    'Content-Type': 'application/json',\n" +
+            "    'Authorization': 'Bearer " + key + "'\n" +
+            "  },\n" +
+            "  body: JSON.stringify({\n" +
+            "    model: '" + model + "',\n" +
+            "    input: " + JSON.stringify(text) + ",\n" +
+            "    voice: '" + voice + "'\n" +
+            "  })\n" +
+            "});\n\n" +
+            "const blob = await response.blob();\n" +
+            "const audioUrl = URL.createObjectURL(blob);";
+        }
+      }
     }
   } else if (modality === "embed") {
     const text = (document.getElementById("embedInputText")?.value || "").trim() || "Hello world";
@@ -4797,10 +5177,14 @@ async function executeCurrentWorkbench() {
   const btn = document.getElementById("btnExecuteUnified");
   const origHtml = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = '<span class="pulse-indicator"></span> Running...';
+  btn.innerHTML = '<span class="pulse-indicator"></span> Synthesizing Request...';
 
   const wrap = document.getElementById("unifiedResponseWrap");
   wrap.style.display = "block";
+  
+  const chatPanel = document.getElementById("wbChatStreamPanel");
+  if (chatPanel) chatPanel.style.display = "none";
+  
   document.getElementById("wbFormattedOutput").style.display = "none";
   document.getElementById("wbFormattedOutput").textContent = "";
   document.getElementById("wbFormattedOutput").classList.remove("streaming-cursor");
@@ -4833,6 +5217,8 @@ async function executeCurrentWorkbench() {
     badge.className = "resp-badge err";
     badge.textContent = "Error";
     const out = document.getElementById("wbFormattedOutput");
+    const chatPanel = document.getElementById("wbChatStreamPanel");
+    if (chatPanel) chatPanel.style.display = "block";
     out.style.display = "block";
     out.textContent = "Request Failed: " + err.message;
   } finally {
@@ -4854,8 +5240,22 @@ async function executeChatRequest(key, t0) {
   if (sysPrompt) messages.push({ role: "system", content: sysPrompt });
   messages.push({ role: "user", content: userMsg });
 
+  const chatPanel = document.getElementById("wbChatStreamPanel");
+  if (chatPanel) chatPanel.style.display = "block";
+
   const outEl = document.getElementById("wbFormattedOutput");
   outEl.style.display = "block";
+  outEl.textContent = "";
+
+  const hudStatus = document.getElementById("wbStreamHudStatus");
+  const tokenTicker = document.getElementById("wbTokenTicker");
+  const speedTicker = document.getElementById("wbSpeedTicker");
+
+  if (hudStatus) {
+    hudStatus.innerHTML = '<span class="cyber-hud-dot"></span><span>NEURAL STREAM ACTIVE // SSE PROTOCOL</span>';
+  }
+  if (tokenTicker) tokenTicker.textContent = "0 TOKENS";
+  if (speedTicker) speedTicker.textContent = "0 T/S";
 
   const badge = document.getElementById("wbRespStatusBadge");
   const meta = document.getElementById("wbRespMeta");
@@ -4884,6 +5284,9 @@ async function executeChatRequest(key, t0) {
     outEl.textContent = errText;
     rawOut.textContent = errText;
     meta.textContent = (((performance.now() - t0) / 1000).toFixed(2)) + "s";
+    if (hudStatus) {
+      hudStatus.innerHTML = '<span class="cyber-hud-dot" style="background:#ef4444;box-shadow:0 0 10px #ef4444;"></span><span style="color:#ef4444;">STREAM ERROR</span>';
+    }
     return;
   }
 
@@ -4893,6 +5296,7 @@ async function executeChatRequest(key, t0) {
     const decoder = new TextDecoder("utf-8");
     let accumulatedText = "";
     let rawChunks = "";
+    let tokenEstimate = 0;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -4914,6 +5318,11 @@ async function executeChatRequest(key, t0) {
           if (delta) {
             accumulatedText += delta;
             outEl.textContent = accumulatedText;
+            tokenEstimate += Math.ceil(delta.length / 3.5);
+            const nowSec = (performance.now() - t0) / 1000;
+            const tps = nowSec > 0 ? (tokenEstimate / nowSec).toFixed(1) : "0.0";
+            if (tokenTicker) tokenTicker.textContent = `~${tokenEstimate} TOKENS`;
+            if (speedTicker) speedTicker.textContent = `${tps} T/S`;
           }
         } catch (e) {
         }
@@ -4924,11 +5333,16 @@ async function executeChatRequest(key, t0) {
     rawOut.textContent = rawChunks;
     const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
     meta.textContent = elapsed + "s · Streaming SSE Completed";
+    if (hudStatus) {
+      hudStatus.innerHTML = '<span class="cyber-hud-dot" style="background:#10b981;box-shadow:0 0 10px #10b981;"></span><span style="color:#10b981;">NEURAL STREAM COMPLETE</span>';
+    }
   } else {
     const data = await res.json();
     const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
     const usage = data?.usage;
     meta.textContent = elapsed + "s" + (usage ? " · " + (usage.total_tokens || 0) + " tokens" : "");
+    if (tokenTicker) tokenTicker.textContent = `${usage?.total_tokens || Math.ceil((data.choices?.[0]?.message?.content || "").length / 3.5)} TOKENS`;
+    if (speedTicker) speedTicker.textContent = `${((usage?.total_tokens || 20) / (parseFloat(elapsed) || 1)).toFixed(1)} T/S`;
 
     if (data?.choices?.[0]?.message?.content != null) {
       outEl.textContent = data.choices[0].message.content;
@@ -4936,43 +5350,81 @@ async function executeChatRequest(key, t0) {
       outEl.textContent = data.error?.message || JSON.stringify(data, null, 2);
     }
     rawOut.textContent = JSON.stringify(data, null, 2);
+    if (hudStatus) {
+      hudStatus.innerHTML = '<span class="cyber-hud-dot" style="background:#10b981;box-shadow:0 0 10px #10b981;"></span><span style="color:#10b981;">RESPONSE DELIVERED</span>';
+    }
   }
 }
 
 async function executeImageRequest(key, t0) {
   const model = selectedModels.image;
-  const prompt = (document.getElementById("imagePrompt")?.value || "").trim() || "A futuristic cybersecurity operations center";
+  const prompt = (document.getElementById("imagePrompt")?.value || "").trim() || "A luminous cyberpunk AI neural nexus floating in deep space, hyper-detailed quantum defense matrix, radiant neon energy streams, floating holographic planetary network, 8k resolution, cinematic volumetric lighting, octane render masterpiece";
   const size = document.getElementById("imageSize")?.value || "1024x1024";
 
-  let res;
-  if (imageSubMode === "edit" && uploadedImageFile) {
-    const formData = new FormData();
-    formData.append("image", uploadedImageFile);
-    formData.append("model", model);
-    formData.append("prompt", prompt);
-    formData.append("size", size);
+  const previewBox = document.getElementById("wbImagePreviewBox");
+  previewBox.style.display = "flex";
+  
+  // Quantum Scanner Laser HUD while loading
+  previewBox.innerHTML = `
+    <div class="quantum-scanner-box">
+      <div class="scanner-grid-overlay"></div>
+      <div class="scanner-laser-beam"></div>
+      <div class="scanner-reticle-ring">
+        <div class="scanner-reticle-core">
+          <div class="scanner-center-cross"></div>
+        </div>
+      </div>
+      <div class="scanner-hud-telemetry-text">
+        <div>⚡ NEURAL DIFFUSION MATRIX</div>
+        <div>TENSOR COHERENCE: <span class="live-ticker" id="quantumCoherenceTicker">99.8%</span></div>
+        <div>TARGET: <span class="live-ticker">${size}</span> // MODEL: <span class="live-ticker">${model}</span></div>
+        <div>STATUS: SYNTHESIZING LATENT VECTORS...</div>
+      </div>
+    </div>
+  `;
 
-    res = await fetch(getBaseUrl() + "/images/edits", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + key
-      },
-      body: formData
-    });
-  } else {
-    res = await fetch(getBaseUrl() + "/images/generations", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + key
-      },
-      body: JSON.stringify({
-        model,
-        prompt,
-        n: 1,
-        size
-      })
-    });
+  // Dynamic coherence ticker pulse
+  const tickerInterval = setInterval(() => {
+    const el = document.getElementById("quantumCoherenceTicker");
+    if (el) {
+      const val = (99.2 + Math.random() * 0.7).toFixed(1);
+      el.textContent = val + "%";
+    }
+  }, 350);
+
+  let res;
+  try {
+    if (imageSubMode === "edit" && uploadedImageFile) {
+      const formData = new FormData();
+      formData.append("image", uploadedImageFile);
+      formData.append("model", model);
+      formData.append("prompt", prompt);
+      formData.append("size", size);
+
+      res = await fetch(getBaseUrl() + "/images/edits", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + key
+        },
+        body: formData
+      });
+    } else {
+      res = await fetch(getBaseUrl() + "/images/generations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + key
+        },
+        body: JSON.stringify({
+          model,
+          prompt,
+          n: 1,
+          size
+        })
+      });
+    }
+  } finally {
+    clearInterval(tickerInterval);
   }
 
   const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
@@ -4981,10 +5433,8 @@ async function executeImageRequest(key, t0) {
   const badge = document.getElementById("wbRespStatusBadge");
   badge.className = "resp-badge " + (res.ok ? "ok" : "err");
   badge.textContent = res.ok ? (imageSubMode === "edit" ? "Image Edited" : "Image Generated") : ("HTTP " + res.status);
-  document.getElementById("wbRespMeta").textContent = elapsed + "s";
+  document.getElementById("wbRespMeta").textContent = elapsed + "s · Resolution: " + size;
 
-  const previewBox = document.getElementById("wbImagePreviewBox");
-  previewBox.style.display = "flex";
   const downloadBtn = document.getElementById("wbMediaDownloadBtn");
   const rawOut = document.getElementById("wbRawResponse");
   rawOut.textContent = JSON.stringify(data, null, 2);
@@ -4997,33 +5447,322 @@ async function executeImageRequest(key, t0) {
   }
 
   if (imgUrl) {
-    previewBox.innerHTML = '<img src="' + imgUrl + '" alt="Generated image" onclick="window.open(this.src, \'_blank\')" style="cursor:zoom-in;" title="Click to open in new tab" />';
+    previewBox.innerHTML = `
+      <div class="holo-image-card">
+        <img src="${imgUrl}" alt="Generated image" onclick="window.open(this.src, '_blank')" style="cursor:zoom-in;" title="Click to view 4K render" />
+        <div class="holo-card-overlay-hud">
+          <div class="holo-meta-group">
+            <span class="holo-meta-badge cyan">${model}</span>
+            <span class="holo-meta-badge">${size}</span>
+            <span class="holo-meta-badge">QUANTUM MATRIX VERIFIED</span>
+          </div>
+          <div class="holo-meta-group">
+            <span style="color:#00f0ff;font-weight:700;">⚡ ${elapsed}s</span>
+          </div>
+        </div>
+      </div>
+    `;
     downloadBtn.style.display = "inline-flex";
     downloadBtn.href = imgUrl;
-    downloadBtn.download = (imageSubMode === "edit" ? "edited-image.png" : "generated-image.png");
+    downloadBtn.download = (imageSubMode === "edit" ? "cyber-edited-image.png" : "cyber-generated-image.png");
   } else {
-    previewBox.innerHTML = '<div style="color:var(--accent-red);padding:20px;">' + (data.error?.message || "Failed to generate image.") + '</div>';
+    previewBox.innerHTML = '<div style="color:var(--accent-red);padding:24px;text-align:center;font-family:var(--font-mono);">' + (data.error?.message || "Failed to generate image.") + '</div>';
     downloadBtn.style.display = "none";
   }
 }
 
+// ── Futuristic Voice Audio Oscilloscope & Visualizer ───────────────────────
+let activeVisualizerAnimFrame = null;
+function startFuturisticAudioVisualizer(audioEl, canvasEl) {
+  if (!canvasEl || !audioEl) return;
+  const ctx = canvasEl.getContext("2d");
+  if (!ctx) return;
+
+  if (activeVisualizerAnimFrame) {
+    cancelAnimationFrame(activeVisualizerAnimFrame);
+    activeVisualizerAnimFrame = null;
+  }
+
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvasEl.clientWidth || 540;
+  const height = canvasEl.clientHeight || 90;
+  canvasEl.width = width * dpr;
+  canvasEl.height = height * dpr;
+  ctx.scale(dpr, dpr);
+
+  let phase = 0;
+
+  function renderFrame() {
+    ctx.clearRect(0, 0, width, height);
+    const isPlaying = !audioEl.paused && !audioEl.ended && audioEl.currentTime > 0;
+
+    // Background grid
+    ctx.strokeStyle = "rgba(251, 191, 36, 0.05)";
+    ctx.lineWidth = 1;
+    for (let x = 0; x < width; x += 20) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+
+    // Spectrum Equalizer Bars
+    const barCount = 42;
+    const barWidth = (width - 40) / barCount;
+    const centerY = height / 2;
+
+    for (let i = 0; i < barCount; i++) {
+      const progress = i / barCount;
+      const wave = Math.sin(phase + progress * Math.PI * 4) * Math.cos(phase * 0.7 + progress * Math.PI * 2);
+      const amp = isPlaying ? (0.2 + Math.abs(wave) * 0.75) : (0.08 + Math.sin(phase + i * 0.2) * 0.05);
+      const barHeight = Math.max(3, amp * (height * 0.7));
+
+      const grad = ctx.createLinearGradient(0, centerY - barHeight / 2, 0, centerY + barHeight / 2);
+      grad.addColorStop(0, "#00f0ff");
+      grad.addColorStop(0.5, "#fbbf24");
+      grad.addColorStop(1, "#ec4899");
+
+      ctx.fillStyle = grad;
+      ctx.shadowColor = "#fbbf24";
+      ctx.shadowBlur = isPlaying ? 8 : 2;
+
+      const bx = 20 + i * barWidth;
+      const by = centerY - barHeight / 2;
+      ctx.fillRect(bx, by, barWidth - 3, barHeight);
+    }
+
+    // Oscilloscope Laser Wave Line
+    ctx.beginPath();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = isPlaying ? "#00f0ff" : "rgba(0, 240, 255, 0.4)";
+    ctx.shadowColor = "#00f0ff";
+    ctx.shadowBlur = isPlaying ? 12 : 4;
+
+    for (let x = 0; x < width; x += 4) {
+      const normalizedX = x / width;
+      const dynamicAmp = isPlaying ? 16 : 4;
+      const y = centerY + Math.sin(normalizedX * 12 + phase * 2) * dynamicAmp * Math.sin(phase + normalizedX * 4);
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    phase += isPlaying ? 0.08 : 0.02;
+    activeVisualizerAnimFrame = requestAnimationFrame(renderFrame);
+  }
+
+  renderFrame();
+}
+
+// ── Audio Model Type Detection ─────────────────────────────────────────────
+function isChatAudioModel(modelId) {
+  const m = (modelId || "").toLowerCase();
+  return m.includes("gpt-4o-audio") || m.includes("audio-preview") || m.includes("gpt-realtime") || m.includes("realtime");
+}
+
 async function executeAudioRequest(key, t0) {
   const model = selectedModels.audio;
+  const isTranscribe = audioSubMode === "transcription" || isTranscriptionModel(model);
+
+  if (isTranscribe) {
+    const streamPanel = document.getElementById("wbChatStreamPanel");
+    const formattedOut = document.getElementById("wbFormattedOutput");
+    const hudStatus = document.getElementById("wbStreamHudStatus");
+    const playerBox = document.getElementById("wbAudioPlayerBox");
+    if (playerBox) playerBox.style.display = "none";
+    if (streamPanel) streamPanel.style.display = "block";
+
+    if (hudStatus) {
+      hudStatus.innerHTML = `
+        <span class="cyber-hud-dot"></span>
+        <span>SPEECH-TO-TEXT // DECODING AUDIO PHONEMES...</span>
+      `;
+    }
+    if (formattedOut) {
+      formattedOut.innerHTML = '<span class="streaming-cursor">Transcribing audio stream...</span>';
+    }
+
+    let audioToSend = uploadedAudioFile;
+    if (!audioToSend) {
+      // Create a lightweight demo WAV if no audio file was uploaded
+      const sampleRate = 16000;
+      const numSamples = sampleRate * 1;
+      const buffer = new ArrayBuffer(44 + numSamples * 2);
+      const view = new DataView(buffer);
+      const writeString = (offset, string) => {
+        for (let i = 0; i < string.length; i++) {
+          view.setUint8(offset + i, string.charCodeAt(i));
+        }
+      };
+      writeString(0, 'RIFF');
+      view.setUint32(4, 36 + numSamples * 2, true);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeString(36, 'data');
+      view.setUint32(40, numSamples * 2, true);
+      audioToSend = new Blob([buffer], { type: "audio/wav" });
+    }
+
+    const formData = new FormData();
+    formData.append("file", audioToSend, uploadedAudioFile ? uploadedAudioFile.name : "demo.wav");
+    formData.append("model", model);
+
+    const langCode = (document.getElementById("audioLanguage")?.value || "").trim();
+    if (langCode) formData.append("language", langCode);
+    const promptCtx = (document.getElementById("audioPromptContext")?.value || "").trim();
+    if (promptCtx) formData.append("prompt", promptCtx);
+
+    let res;
+    try {
+      res = await fetch(getBaseUrl() + "/audio/transcriptions", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + key
+        },
+        body: formData
+      });
+    } catch (netErr) {
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+      const badge = document.getElementById("wbRespStatusBadge");
+      badge.className = "resp-badge err";
+      badge.textContent = "Network Error";
+      document.getElementById("wbRespMeta").textContent = elapsed + "s · Model: " + model;
+      if (formattedOut) formattedOut.textContent = "Request Failed: " + netErr.message;
+      return;
+    }
+
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+    const badge = document.getElementById("wbRespStatusBadge");
+    badge.className = "resp-badge " + (res.ok ? "ok" : "err");
+    badge.textContent = res.ok ? "Transcribed" : ("HTTP " + res.status);
+    document.getElementById("wbRespMeta").textContent = elapsed + "s · Model: " + model;
+
+    const rawOut = document.getElementById("wbRawResponse");
+    if (res.ok) {
+      const data = await res.json();
+      rawOut.textContent = JSON.stringify(data, null, 2);
+      const textResult = data.text || JSON.stringify(data, null, 2);
+      if (formattedOut) formattedOut.textContent = textResult;
+      if (hudStatus) {
+        hudStatus.innerHTML = `
+          <span class="cyber-hud-dot" style="background:#10b981;box-shadow:0 0 10px #10b981;"></span>
+          <span style="color:#10b981;">TRANSCRIPTION COMPLETED // ${elapsed}s</span>
+        `;
+      }
+    } else {
+      const errText = await res.text();
+      rawOut.textContent = errText;
+      if (formattedOut) formattedOut.textContent = "Transcription Failed (" + res.status + "):\n" + errText;
+      if (hudStatus) {
+        hudStatus.innerHTML = `
+          <span class="cyber-hud-dot" style="background:#ef4444;box-shadow:0 0 10px #ef4444;"></span>
+          <span style="color:#ef4444;">TRANSCRIPTION ERROR // HTTP ${res.status}</span>
+        `;
+      }
+    }
+    return;
+  }
+
   const text = (document.getElementById("audioInputText")?.value || "").trim() || "Hello world";
   const voice = document.getElementById("audioVoice")?.value || "alloy";
+  const isChatAudio = isChatAudioModel(model);
 
-  const res = await fetch(getBaseUrl() + "/audio/speech", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer " + key
-    },
-    body: JSON.stringify({
-      model,
-      input: text,
-      voice
-    })
-  });
+  const playerBox = document.getElementById("wbAudioPlayerBox");
+  playerBox.style.display = "flex";
+  
+  // Futuristic Audio Synthesizer loading state
+  playerBox.innerHTML = `
+    <div class="cyber-audio-hud">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="cyber-voice-bars">
+          <span class="cyber-voice-bar"></span>
+          <span class="cyber-voice-bar"></span>
+          <span class="cyber-voice-bar"></span>
+          <span class="cyber-voice-bar"></span>
+          <span class="cyber-voice-bar"></span>
+        </span>
+        <span style="color:#00f0ff;font-weight:700;">NEURAL VOICE SYNTHESIZER</span>
+      </div>
+      <span class="cyber-telemetry-tag">VOICE: ${voice.toUpperCase()}</span>
+    </div>
+    <div style="font-family:var(--font-mono);font-size:11px;color:#fbbf24;letter-spacing:0.5px;">SYNTHESIZING PHONEMIC LATENT WAVEFORMS...</div>
+  `;
+
+  let res;
+  let audioBlob = null;
+  let rawResponseData = "";
+  let transcript = "";
+
+  if (isChatAudio) {
+    // Realtime / Chat Audio models use /chat/completions with audio modality
+    res = await fetch(getBaseUrl() + "/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + key
+      },
+      body: JSON.stringify({
+        model,
+        modalities: ["text", "audio"],
+        audio: {
+          voice,
+          format: "mp3"
+        },
+        messages: [
+          { role: "user", content: text }
+        ]
+      })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      rawResponseData = JSON.stringify(data, null, 2);
+      const b64Audio = data.choices?.[0]?.message?.audio?.data;
+      transcript = data.choices?.[0]?.message?.audio?.transcript || data.choices?.[0]?.message?.content || "";
+
+      if (b64Audio) {
+        try {
+          const binaryStr = atob(b64Audio);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          audioBlob = new Blob([bytes], { type: "audio/mp3" });
+        } catch (e) {}
+      }
+    } else {
+      rawResponseData = await res.text();
+    }
+  } else {
+    // Dedicated TTS models (tts-1, tts-1-hd, elevenlabs) use /audio/speech
+    res = await fetch(getBaseUrl() + "/audio/speech", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + key
+      },
+      body: JSON.stringify({
+        model,
+        input: text,
+        voice
+      })
+    });
+
+    if (res.ok) {
+      audioBlob = await res.blob();
+      rawResponseData = "Audio stream received: " + (audioBlob.size / 1024).toFixed(1) + " KB (audio/mpeg)";
+    } else {
+      rawResponseData = await res.text();
+    }
+  }
 
   const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
   const badge = document.getElementById("wbRespStatusBadge");
@@ -5031,24 +5770,76 @@ async function executeAudioRequest(key, t0) {
   badge.textContent = res.ok ? "Audio Synthesized" : ("HTTP " + res.status);
   document.getElementById("wbRespMeta").textContent = elapsed + "s · Voice: " + voice;
 
-  const playerBox = document.getElementById("wbAudioPlayerBox");
-  playerBox.style.display = "flex";
   const downloadLink = document.getElementById("wbMediaDownloadBtn");
   const rawOut = document.getElementById("wbRawResponse");
+  rawOut.textContent = rawResponseData;
 
-  if (res.ok) {
-    const blob = await res.blob();
-    const audioUrl = URL.createObjectURL(blob);
-    playerBox.innerHTML = '<audio controls autoplay src="' + audioUrl + '"></audio>';
+  if (res.ok && audioBlob) {
+    const audioUrl = URL.createObjectURL(audioBlob);
+    
+    playerBox.innerHTML = `
+      <div class="cyber-audio-hud">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="cyber-voice-bars">
+            <span class="cyber-voice-bar"></span>
+            <span class="cyber-voice-bar"></span>
+            <span class="cyber-voice-bar"></span>
+            <span class="cyber-voice-bar"></span>
+            <span class="cyber-voice-bar"></span>
+          </span>
+          <span style="color:#00f0ff;font-weight:700;">QUANTUM AUDIO OSCILLOSCOPE</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="cyber-telemetry-tag">PERSONA: ${voice.toUpperCase()}</span>
+          <span class="cyber-telemetry-tag" style="color:#fbbf24;">${(audioBlob.size / 1024).toFixed(1)} KB</span>
+        </div>
+      </div>
+      <canvas class="audio-visualizer-canvas" id="wbAudioVisualizerCanvas"></canvas>
+      <audio id="wbAudioPlayerEl" controls autoplay src="${audioUrl}"></audio>
+      ${transcript ? `<div style="margin-top:8px;font-family:var(--font-mono);font-size:11px;color:#cbd5e1;text-align:center;">Transcript: "${transcript}"</div>` : ''}
+    `;
+
+    const audioEl = document.getElementById("wbAudioPlayerEl");
+    const canvasEl = document.getElementById("wbAudioVisualizerCanvas");
+    if (audioEl && canvasEl) {
+      startFuturisticAudioVisualizer(audioEl, canvasEl);
+      audioEl.addEventListener("play", () => startFuturisticAudioVisualizer(audioEl, canvasEl));
+    }
+
     downloadLink.style.display = "inline-flex";
     downloadLink.href = audioUrl;
-    downloadLink.download = "speech.mp3";
-    rawOut.textContent = "Audio stream received: " + (blob.size / 1024).toFixed(1) + " KB (audio/mpeg)";
+    downloadLink.download = `speech-${voice}.mp3`;
   } else {
-    const errJson = await res.json();
-    playerBox.innerHTML = '<div style="color:var(--accent-red);padding:20px;">' + (errJson.error?.message || "TTS Request failed") + '</div>';
+    let errMsg = "Request failed.";
+    try {
+      const parsed = JSON.parse(rawResponseData);
+      errMsg = parsed.error?.message || parsed.message || rawResponseData;
+    } catch (e) {
+      errMsg = rawResponseData || "Internal Server Error from upstream gateway.";
+    }
+
+    const isAzureRealtime = (errMsg.includes("AzureException") || errMsg.includes("unsupported")) && isChatAudio;
+    const fallbackTtsModel = (currentModelMap && (currentModelMap["tts-1"] || currentModelMap["openai/tts-1"])) ? (currentModelMap["tts-1"] ? "tts-1" : "openai/tts-1") : "tts-1";
+
+    playerBox.innerHTML = `
+      <div class="cyber-audio-error-card">
+        <div class="error-badge">
+          <span>⚠ HTTP ${res.status} · ${isAzureRealtime ? "Azure Realtime Model Limitation" : "Gateway Request Failed"}</span>
+        </div>
+        <div class="error-detail">${escapeHtml(errMsg)}</div>
+        <div class="error-guide">
+          <strong>Root Cause:</strong> <code>${model}</code> is an Azure OpenAI Realtime deployment. Azure Realtime models only accept bidirectional WebSocket / WebRTC streaming (<code>wss://.../v1/realtime</code>) and reject standard HTTP REST audio synthesis.
+          <br><br>
+          <strong>Recommended Solution:</strong> Use dedicated Text-to-Speech models like <code>${fallbackTtsModel}</code> or <code>tts-1-hd</code> for HTTP speech synthesis.
+        </div>
+        <div>
+          <button class="btn-primary btn-sm" onclick="selectModelForModality('audio', '${fallbackTtsModel}'); executeCurrentWorkbench();" style="margin-top:4px;">
+            ⚡ Switch to ${fallbackTtsModel} &amp; Synthesize
+          </button>
+        </div>
+      </div>
+    `;
     downloadLink.style.display = "none";
-    rawOut.textContent = JSON.stringify(errJson, null, 2);
   }
 }
 
@@ -5198,12 +5989,40 @@ async function fetchModels(isAuto = false) {
       }
       const dynamicHealth = { total: computedTotal, online: computedOnline };
 
+      // Dynamic Cost Parsing
+      const mInfo = item.model_info || {};
+      const lParams = item.litellm_params || {};
+
+      let inCost = existing.inCost;
+      let outCost = existing.outCost;
+
+      if (mInfo.input_cost_per_token != null) {
+        inCost = +(mInfo.input_cost_per_token * 1000000).toFixed(4);
+      } else if (lParams.input_cost_per_token != null) {
+        inCost = +(lParams.input_cost_per_token * 1000000).toFixed(4);
+      }
+
+      if (mInfo.output_cost_per_token != null) {
+        outCost = +(mInfo.output_cost_per_token * 1000000).toFixed(4);
+      } else if (lParams.output_cost_per_token != null) {
+        outCost = +(lParams.output_cost_per_token * 1000000).toFixed(4);
+      }
+
+      // TrendMicro / On-Premise GPU models (gmi, ray, rone, primus, cybertron) are FREE
+      const isTrendMicroOnPrem = id.includes("-gmi") || id.includes("-ray") || /^(rone-|primus-|cybertron-)/i.test(id) || id === "mock-llm" || (mInfo.litellm_provider === "trendmicro") || (mInfo.provider === "TrendMicro") || (existing.provider === "TrendMicro");
+      if (isTrendMicroOnPrem && inCost == null) {
+        inCost = 0;
+        outCost = 0;
+      }
+
       currentModelMap.set(id, {
         id,
         ...existing,
         mode: item.mode || existing.mode || (getModality(id, existing) === "chat" ? "chat" : getModality(id, existing)),
         releaseDate,
         health: dynamicHealth,
+        inCost,
+        outCost,
         maxTokens: existing.maxTokens || (item.max_tokens ? formatTokenCount(item.max_tokens) : null),
         maxInputTokens: item.max_input_tokens || existing.maxInputTokens,
         maxOutputTokens: item.max_output_tokens || existing.maxOutputTokens
